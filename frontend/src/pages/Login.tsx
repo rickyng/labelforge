@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { login } from '../api'
 import { useToast } from '../components/Toast'
+import { TagIcon } from '../components/TagIcon'
 
 export default function Login() {
   const [username, setUsername] = useState('')
@@ -18,7 +19,7 @@ export default function Login() {
       addToast(`Welcome, ${res.username}!`, 'success')
       navigate(res.role === 'admin' ? '/admin' : '/user')
     } catch (err) {
-      addToast(String(err), 'error')
+      addToast(err instanceof Error ? err.message : 'Login failed', 'error')
     } finally {
       setLoading(false)
     }
@@ -29,8 +30,8 @@ export default function Login() {
       <div className="w-full max-w-sm space-y-8">
         {/* Logo */}
         <div className="text-center space-y-2">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-brand-50 border border-brand-200 text-3xl mb-1">
-            🏷️
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-brand-50 border border-brand-200 mb-1">
+            <TagIcon className="w-7 h-7 text-brand-600" />
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-gray-900">LabelForge</h1>
           <p className="text-gray-500 text-sm">PDF text label editor</p>
@@ -42,7 +43,7 @@ export default function Login() {
           className="bg-white border border-gray-200 rounded-2xl p-6 space-y-5 shadow-sm"
         >
           <div className="space-y-1.5">
-            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-600">Username</label>
+            <label className="block text-sm font-medium text-gray-700">Username</label>
             <input
               type="text"
               autoComplete="username"
@@ -55,7 +56,7 @@ export default function Login() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-600">Password</label>
+            <label className="block text-sm font-medium text-gray-700">Password</label>
             <input
               type="password"
               autoComplete="current-password"

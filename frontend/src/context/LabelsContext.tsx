@@ -108,38 +108,47 @@ export function LabelsProvider({ children }: { children: React.ReactNode }) {
     [labels, editableSet],
   )
 
+  const value = useMemo(() => ({
+    labels,
+    setLabels,
+    updateLabel,
+    resetLabel,
+    sessionId,
+    setSessionId,
+    pageCount,
+    setPageCount,
+    currentPage,
+    setCurrentPage,
+    selectedLabelId,
+    setSelectedLabelId,
+    isDone,
+    setIsDone,
+    hoveredLabelId,
+    setHoveredLabelId,
+    editableSet,
+    toggleEditable,
+    setAllEditable,
+    loadEditableIds,
+    editableLabels,
+    selectedRows,
+    toggleSelected,
+    selectAll,
+    clearSelected,
+    searchQuery,
+    setSearchQuery,
+  }), [
+    labels, setLabels, updateLabel, resetLabel,
+    sessionId, pageCount, currentPage,
+    selectedLabelId, isDone, hoveredLabelId,
+    editableSet, toggleEditable, setAllEditable, loadEditableIds, editableLabels,
+    selectedRows, toggleSelected, selectAll, clearSelected,
+    searchQuery,
+    // useState setters (setSessionId, setPageCount, etc.) are stable across renders
+    // and intentionally omitted from deps per React docs.
+  ])
+
   return (
-    <LabelsContext.Provider
-      value={{
-        labels,
-        setLabels,
-        updateLabel,
-        resetLabel,
-        sessionId,
-        setSessionId,
-        pageCount,
-        setPageCount,
-        currentPage,
-        setCurrentPage,
-        selectedLabelId,
-        setSelectedLabelId,
-        isDone,
-        setIsDone,
-        hoveredLabelId,
-        setHoveredLabelId,
-        editableSet,
-        toggleEditable,
-        setAllEditable,
-        loadEditableIds,
-        editableLabels,
-        selectedRows,
-        toggleSelected,
-        selectAll,
-        clearSelected,
-        searchQuery,
-        setSearchQuery,
-      }}
-    >
+    <LabelsContext.Provider value={value}>
       {children}
     </LabelsContext.Provider>
   )

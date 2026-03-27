@@ -10,6 +10,8 @@ import { useToast } from '../components/Toast'
 import { UserForm } from '../components/UserForm'
 import { useLabels } from '../context/LabelsContext'
 import type { ConfigSummary, UserLabelSummary } from '../types'
+import { TagIcon } from '../components/TagIcon'
+import { getRole } from '../utils/auth'
 
 export default function User() {
   const navigate = useNavigate()
@@ -40,25 +42,29 @@ export default function User() {
 
   // Guard: redirect if not logged in
   useEffect(() => {
-    const role = document.cookie.split('; ').find((r) => r.startsWith('role='))?.split('=')[1]
+    const role = getRole()
     if (!role || (role !== 'admin' && role !== 'user')) navigate('/login')
   }, [navigate])
 
   // Load label list on mount
   useEffect(() => {
+    let cancelled = false
     listUserLabels()
-      .then(setUserLabels)
-      .catch(() => {})
-      .finally(() => setLoadingList(false))
-  }, [])
+      .then((data) => { if (!cancelled) setUserLabels(data) })
+      .catch(() => { if (!cancelled) addToast('Failed to load labels', 'error') })
+      .finally(() => { if (!cancelled) setLoadingList(false) })
+    return () => { cancelled = true }
+  }, [addToast])
 
   // Load profiles for dropdown when entering editor
-  async function loadProfiles() {
+  const loadProfiles = useCallback(async () => {
     try {
       const list = await listConfigs()
       setProfiles(list)
-    } catch {}
-  }
+    } catch {
+      addToast('Failed to load profiles', 'error')
+    }
+  }, [addToast])
 
   async function openNewEditor() {
     setActiveLabel('')
@@ -84,7 +90,7 @@ export default function User() {
       setSelectedProfile(ul.profile_name)
       await loadProfiles()
     } catch (err) {
-      addToast(String(err), 'error')
+      addToast(err instanceof Error ? err.message : 'An error occurred', 'error')
     }
   }
 
@@ -95,13 +101,14 @@ export default function User() {
     try {
       const res = await loadConfig(profileName)
       setSessionId(res.session_id)
-      setLabels(res.labels)
+      // Reset new_text to null so a new label always starts blank
+      setLabels(res.labels.map((l) => ({ ...l, new_text: null })))
       setPageCount(res.page_count)
       setCurrentPage(0)
       loadEditableIds(res.editable_ids)
       setIsDone(false)
     } catch (err) {
-      addToast(String(err), 'error')
+      addToast(err instanceof Error ? err.message : 'An error occurred', 'error')
     } finally {
       setLoadingProfile(false)
     }
@@ -122,7 +129,7 @@ export default function User() {
       const list = await listUserLabels()
       setUserLabels(list)
     } catch (err) {
-      addToast(String(err), 'error')
+      addToast(err instanceof Error ? err.message : 'An error occurred', 'error')
     } finally {
       setSaving(false)
     }
@@ -137,7 +144,7 @@ export default function User() {
       setIsDone(true)
       setPreviewKey((k) => k + 1)
     } catch (err) {
-      addToast(String(err), 'error')
+      addToast(err instanceof Error ? err.message : 'An error occurred', 'error')
     } finally {
       setPreviewing(false)
     }
@@ -155,7 +162,7 @@ export default function User() {
       setUserLabels((prev) => prev.filter((l) => l.name !== name))
       addToast(`Deleted "${name}".`, 'success')
     } catch (err) {
-      addToast(String(err), 'error')
+      addToast(err instanceof Error ? err.message : 'An error occurred', 'error')
     }
   }
 
@@ -184,7 +191,7 @@ export default function User() {
       {/* Top bar */}
       <header className="flex items-center justify-between px-5 py-3 border-b border-gray-200 bg-white shadow-sm">
         <div className="flex items-center gap-2.5">
-          <span className="text-lg">🏷️</span>
+          <TagIcon className="w-5 h-5 text-brand-600" />
           <span className="font-bold text-gray-900 tracking-tight">LabelForge</span>
         </div>
         <div className="flex items-center gap-2">

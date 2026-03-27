@@ -47,6 +47,7 @@ export function UserForm({ onFieldBlur }: UserFormProps = {}) {
             {/* Input — white text, clearly interactive */}
             <input
               type="text"
+              aria-label={`Replacement for: ${lbl.original_text || 'empty'}`}
               placeholder={lbl.original_text || 'Replacement text…'}
               value={lbl.new_text ?? ''}
               onChange={(e) =>

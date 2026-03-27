@@ -8,6 +8,8 @@ import { PdfViewer } from '../components/PdfViewer'
 import { useToast } from '../components/Toast'
 import { UploadZone } from '../components/UploadZone'
 import { useLabels } from '../context/LabelsContext'
+import { TagIcon } from '../components/TagIcon'
+import { getRole } from '../utils/auth'
 
 export default function Admin() {
   const navigate = useNavigate()
@@ -31,8 +33,7 @@ export default function Admin() {
 
   // Guard: redirect if not admin
   useEffect(() => {
-    const role = document.cookie.split('; ').find((r) => r.startsWith('role='))?.split('=')[1]
-    if (role !== 'admin') navigate('/login')
+    if (getRole() !== 'admin') navigate('/login')
   }, [navigate])
 
   const refreshProfiles = useCallback(async () => {
@@ -44,7 +45,9 @@ export default function Admin() {
 
   // Load profiles on mount
   useEffect(() => {
-    refreshProfiles().finally(() => setLoadingProfiles(false))
+    let cancelled = false
+    refreshProfiles().finally(() => { if (!cancelled) setLoadingProfiles(false) })
+    return () => { cancelled = true }
   }, [refreshProfiles])
 
   const handleFile = useCallback(
@@ -68,7 +71,7 @@ export default function Admin() {
         addToast(`Extracted ${res.labels.length} label(s)`, 'success')
         setShowUpload(false)
       } catch (err) {
-        addToast(String(err), 'error')
+        addToast(err instanceof Error ? err.message : 'An error occurred', 'error')
       } finally {
         setUploading(false)
         setAnalyzing(false)
@@ -88,7 +91,7 @@ export default function Admin() {
       setFilename(cfg.filename)
       setProfileName(cfg.name || cfg.filename)
     } catch (err) {
-      addToast(String(err), 'error')
+      addToast(err instanceof Error ? err.message : 'An error occurred', 'error')
     }
   }
 
@@ -98,23 +101,28 @@ export default function Admin() {
       setProfiles((prev) => prev.filter((c) => c.name !== filename))
       addToast(`Removed profile "${filename}"`, 'success')
     } catch (err) {
-      addToast(String(err), 'error')
+      addToast(err instanceof Error ? err.message : 'An error occurred', 'error')
     }
   }
 
   const handleSaveConfig = useCallback(async () => {
     if (!sessionId) return
+    const name = profileName.trim()
+    if (!name) {
+      addToast('Enter a profile name before saving.', 'error')
+      return
+    }
     setSavingConfig(true)
     try {
-      const res = await saveEditableConfig(sessionId, [...editableSet], profileName.trim() || filename)
+      const res = await saveEditableConfig(sessionId, [...editableSet], name)
       addToast(`Saved ${res.saved} editable label(s).`, 'success')
-      refreshProfiles()
+      await refreshProfiles()
     } catch (err) {
-      addToast(String(err), 'error')
+      addToast(err instanceof Error ? err.message : 'An error occurred', 'error')
     } finally {
       setSavingConfig(false)
     }
-  }, [sessionId, editableSet, addToast, refreshProfiles])
+  }, [sessionId, editableSet, profileName, addToast, refreshProfiles])
 
   const handleDimensions = useCallback(
     (w: number, h: number, scale: number) => setCanvasSize({ w, h, scale }),
@@ -178,7 +186,7 @@ export default function Admin() {
       {/* Top bar */}
       <header className="flex items-center justify-between px-6 py-3 border-b border-gray-200 bg-white shadow-sm">
         <div className="flex items-center gap-3">
-          <span className="text-xl">🏷️</span>
+          <TagIcon className="w-5 h-5 text-brand-600" />
           <span className="font-bold text-gray-900">LabelForge</span>
           <span className="text-xs bg-brand-600 text-white px-2 py-0.5 rounded-full">Admin</span>
         </div>
@@ -269,9 +277,10 @@ export default function Admin() {
                     </span>
                     <button
                       onClick={handleClearSession}
-                      className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                      className="text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
+                      aria-label="Close"
                     >
-                      ✕
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
                     </button>
                   </div>
                 </div>
@@ -280,7 +289,7 @@ export default function Admin() {
                   value={profileName}
                   onChange={(e) => setProfileName(e.target.value)}
                   placeholder="Profile name…"
-                  className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-brand-500"
+                  className="input-field"
                 />
                 <button
                   onClick={handleSaveConfig}

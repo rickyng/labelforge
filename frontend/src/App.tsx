@@ -5,15 +5,7 @@ import { LabelsProvider } from './context/LabelsContext'
 import Admin from './pages/Admin'
 import Login from './pages/Login'
 import User from './pages/User'
-
-function getRole(): string | null {
-  return (
-    document.cookie
-      .split('; ')
-      .find((r) => r.startsWith('role='))
-      ?.split('=')[1] ?? null
-  )
-}
+import { getRole } from './utils/auth'
 
 function RootRedirect() {
   const role = getRole()

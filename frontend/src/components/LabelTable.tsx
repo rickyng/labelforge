@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react'
+import React, { useRef, useEffect, useMemo } from 'react'
 import { useLabels } from '../context/LabelsContext'
 
 export function LabelTable() {
@@ -32,15 +32,15 @@ export function LabelTable() {
     )
   }
 
-  const filtered = labels.filter((l) => {
-    if (!searchQuery) return true
+  const filtered = useMemo(() => {
+    if (!searchQuery) return labels
     const q = searchQuery.toLowerCase()
-    return (
+    return labels.filter((l) =>
       l.original_text.toLowerCase().includes(q) ||
       String(l.page + 1).includes(q) ||
       l.id.toLowerCase().includes(q)
     )
-  })
+  }, [labels, searchQuery])
 
   function handleRowClick(id: string, page: number) {
     setSelectedLabelId(id)
@@ -55,7 +55,7 @@ export function LabelTable() {
         placeholder="Search labels…"
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
-        className="w-full px-3 py-1.5 text-sm bg-white border border-gray-300 rounded focus:outline-none focus:border-brand-500 text-gray-800 placeholder-gray-400"
+        className="input-field text-sm"
       />
 
       {/* Table */}
