@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { analyzeSession, deleteConfig, listConfigs, loadConfig, logout, previewUrl, saveEditableConfig, uploadFile } from '../api'
 import type { ConfigSummary } from '../types'
 import { AdminOverlay } from '../components/AdminOverlay'
+import { ZoomControls } from '../components/ZoomControls'
 import { LabelTable } from '../components/LabelTable'
 import { PdfViewer } from '../components/PdfViewer'
 import { useToast } from '../components/Toast'
@@ -25,6 +26,7 @@ export default function Admin() {
   const [analyzing, setAnalyzing] = useState(false)
   const [savingConfig, setSavingConfig] = useState(false)
   const [canvasSize, setCanvasSize] = useState({ w: 800, h: 1000, scale: 1 })
+  const [zoom, setZoom] = useState(1)
   const [profiles, setProfiles] = useState<ConfigSummary[]>([])
   const [loadingProfiles, setLoadingProfiles] = useState(true)
   const [showUpload, setShowUpload] = useState(false)
@@ -146,8 +148,8 @@ export default function Admin() {
   const editableCount = editableSet.size
 
   const pdfPanel = hasSession ? (
-    <div className="flex flex-col flex-1 min-w-0 overflow-y-auto p-4 gap-3">
-      <div className="flex items-center gap-3 justify-center">
+    <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+      <div className="flex items-center gap-3 justify-center flex-wrap shrink-0 px-4 pt-4 pb-2">
         <button
           onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
           disabled={currentPage === 0}
@@ -163,26 +165,35 @@ export default function Admin() {
         >
           Next ›
         </button>
+        <ZoomControls
+          zoom={zoom}
+          onZoomChange={setZoom}
+          className="ml-2"
+          btnClassName="btn-secondary text-sm py-1 px-2"
+        />
       </div>
-      <PdfViewer
-        url={previewUrl(sessionId!)}
-        page={currentPage}
-        onPageCount={setPageCount}
-        onDimensions={handleDimensions}
-        overlay={
-          <AdminOverlay
-            canvasWidth={canvasSize.w}
-            canvasHeight={canvasSize.h}
-            pdfScale={canvasSize.scale}
-            currentPage={currentPage}
-          />
-        }
-      />
+      <div className="flex-1 overflow-auto px-4 pb-4">
+        <PdfViewer
+          url={previewUrl(sessionId!)}
+          page={currentPage}
+          zoom={zoom}
+          onPageCount={setPageCount}
+          onDimensions={handleDimensions}
+          overlay={
+            <AdminOverlay
+              canvasWidth={canvasSize.w}
+              canvasHeight={canvasSize.h}
+              pdfScale={canvasSize.scale}
+              currentPage={currentPage}
+            />
+          }
+        />
+      </div>
     </div>
   ) : null
 
   return (
-    <div className="min-h-screen bg-white flex flex-col">
+    <div className="h-screen bg-white flex flex-col overflow-hidden">
       {/* Top bar */}
       <header className="flex items-center justify-between px-6 py-3 border-b border-gray-200 bg-white shadow-sm">
         <div className="flex items-center gap-3">

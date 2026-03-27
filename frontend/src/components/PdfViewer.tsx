@@ -14,12 +14,13 @@ async function getPdfjs() {
 interface PdfViewerProps {
   url: string
   page: number // 0-based
+  zoom?: number  // multiplier on top of fit-to-width scale; default 1
   onPageCount?: (n: number) => void
   onDimensions?: (w: number, h: number, scale: number) => void
   overlay?: React.ReactNode
 }
 
-export function PdfViewer({ url, page, onPageCount, onDimensions, overlay }: PdfViewerProps) {
+export function PdfViewer({ url, page, zoom = 1, onPageCount, onDimensions, overlay }: PdfViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [loading, setLoading] = useState(true)
@@ -35,7 +36,8 @@ export function PdfViewer({ url, page, onPageCount, onDimensions, overlay }: Pdf
       const container = containerRef.current
       const containerWidth = container?.clientWidth ?? 800
       const viewport = pdfPage.getViewport({ scale: 1 })
-      const scale = containerWidth / viewport.width
+      const baseScale = containerWidth / viewport.width
+      const scale = baseScale * zoom
       const scaledViewport = pdfPage.getViewport({ scale })
 
       const canvas = canvasRef.current
@@ -50,7 +52,7 @@ export function PdfViewer({ url, page, onPageCount, onDimensions, overlay }: Pdf
     } finally {
       setLoading(false)
     }
-  }, [page, onDimensions])
+  }, [page, zoom, onDimensions])
 
   // Load PDF document and render immediately once ready
   useEffect(() => {
@@ -95,12 +97,14 @@ export function PdfViewer({ url, page, onPageCount, onDimensions, overlay }: Pdf
       {error && (
         <div className="p-4 text-red-400 text-sm">{error}</div>
       )}
-      <canvas ref={canvasRef} className="w-full rounded shadow-xl" />
-      {overlay && (
-        <div className="absolute inset-0 pointer-events-none" style={{ top: 0, left: 0 }}>
-          {overlay}
-        </div>
-      )}
+      <div className="relative inline-block">
+        <canvas ref={canvasRef} className="block rounded shadow-xl" />
+        {overlay && (
+          <div className="absolute inset-0 pointer-events-none">
+            {overlay}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

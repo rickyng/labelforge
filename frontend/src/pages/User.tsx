@@ -5,6 +5,7 @@ import {
   loadConfig, loadUserLabel, logout, previewUrl, saveUserLabel,
 } from '../api'
 import { AdminOverlay } from '../components/AdminOverlay'
+import { ZoomControls } from '../components/ZoomControls'
 import { PdfViewer } from '../components/PdfViewer'
 import { useToast } from '../components/Toast'
 import { UserForm } from '../components/UserForm'
@@ -36,6 +37,7 @@ export default function User() {
   const [loadingProfile, setLoadingProfile] = useState(false)
   const [saving, setSaving] = useState(false)
   const [canvasSize, setCanvasSize] = useState({ w: 800, h: 1000, scale: 1 })
+  const [zoom, setZoom] = useState(1)
   const [previewing, setPreviewing] = useState(false)
   const [previewMode, setPreviewMode] = useState(false)
   const [previewKey, setPreviewKey] = useState(0)
@@ -187,7 +189,7 @@ export default function User() {
 
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
       {/* Top bar */}
       <header className="flex items-center justify-between px-5 py-3 border-b border-gray-200 bg-white shadow-sm">
         <div className="flex items-center gap-2.5">
@@ -375,16 +377,21 @@ export default function User() {
             )}
             {sessionId ? (
               previewMode ? (
-                <PdfViewer
-                  url={`${downloadUrl(sessionId)}?v=${previewKey}`}
-                  page={currentPage}
-                  onDimensions={handleDimensions}
-                />
+                <div className='flex-1 overflow-auto p-2'>
+                  <PdfViewer
+                    url={`${downloadUrl(sessionId)}?v=${previewKey}`}
+                    page={currentPage}
+                    zoom={zoom}
+                    onDimensions={handleDimensions}
+                  />
+                </div>
               ) : (
                 <>
+                  <div className='flex-1 overflow-auto p-2'>
                   <PdfViewer
                     url={previewUrl(sessionId)}
                     page={currentPage}
+                    zoom={zoom}
                     onDimensions={handleDimensions}
                     overlay={
                       <AdminOverlay
@@ -395,8 +402,9 @@ export default function User() {
                       />
                     }
                   />
+                  </div>
                   {pageCount > 1 && (
-                    <div className='flex items-center justify-center gap-4 py-2.5 border-t border-gray-200 bg-white'>
+                    <div className='flex items-center justify-center gap-4 py-2.5 border-t border-gray-200 bg-white flex-wrap shrink-0'>
                       <button
                         onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
                         disabled={currentPage === 0}
@@ -414,6 +422,11 @@ export default function User() {
                       >
                         Next →
                       </button>
+                      <ZoomControls
+                        zoom={zoom}
+                        onZoomChange={setZoom}
+                        btnClassName='btn-ghost py-1 px-2'
+                      />
                     </div>
                   )}
                 </>
