@@ -55,14 +55,14 @@ export function LabelTable() {
         placeholder="Search labels…"
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
-        className="w-full px-3 py-1.5 text-sm bg-gray-800 border border-gray-700 rounded focus:outline-none focus:border-brand-500 text-gray-200 placeholder-gray-600"
+        className="w-full px-3 py-1.5 text-sm bg-white border border-gray-300 rounded focus:outline-none focus:border-brand-500 text-gray-800 placeholder-gray-400"
       />
 
       {/* Table */}
       <div className="overflow-x-auto">
         <table className="w-full text-xs text-left border-collapse">
           <thead>
-            <tr className="border-b border-gray-700 text-gray-500">
+            <tr className="border-b border-gray-200 text-gray-500">
               <th className="py-1.5 px-1">Editable</th>
               <th className="py-1.5 px-1">ID</th>
               <th className="py-1.5 px-1">Pg</th>
@@ -78,16 +78,16 @@ export function LabelTable() {
               const isEditable = editableSet.has(lbl.id)
 
               const rowBg = isHovered
-                ? 'bg-sky-950'
+                ? 'bg-sky-50'
                 : isSelected
-                ? 'bg-indigo-950'
+                ? 'bg-indigo-50'
                 : ''
 
               return (
                 <tr
                   key={lbl.id}
                   ref={(el) => { rowRefs.current[lbl.id] = el }}
-                  className={`border-b border-gray-800 cursor-pointer transition-colors ${rowBg} hover:bg-gray-800`}
+                  className={`border-b border-gray-100 cursor-pointer transition-colors ${rowBg} hover:bg-gray-50`}
                   onMouseEnter={() => setHoveredLabelId(lbl.id)}
                   onMouseLeave={() => setHoveredLabelId(null)}
                   onClick={() => handleRowClick(lbl.id, lbl.page)}
@@ -104,7 +104,7 @@ export function LabelTable() {
                   </td>
 
                   {/* ID */}
-                  <td className="py-1 px-1 font-mono text-gray-600 max-w-[60px] truncate" title={lbl.id}>
+                  <td className="py-1 px-1 font-mono text-gray-400 max-w-[60px] truncate" title={lbl.id}>
                     {lbl.id.slice(0, 8)}
                   </td>
 
@@ -112,17 +112,17 @@ export function LabelTable() {
                   <td className="py-1 px-1 text-gray-500">{lbl.page + 1}</td>
 
                   {/* Original Text */}
-                  <td className="py-1 px-1 max-w-[160px] truncate text-gray-300" title={lbl.original_text}>
+                  <td className="py-1 px-1 max-w-[160px] truncate text-gray-700" title={lbl.original_text}>
                     {lbl.original_text || <em className="text-gray-600">empty</em>}
                   </td>
 
                   {/* Font Size (read-only) */}
-                  <td className="py-1 px-1 text-gray-500">{lbl.fontsize.toFixed(1)}</td>
+                  <td className="py-1 px-1 text-gray-500 tabular-nums">{lbl.fontsize.toFixed(1)}</td>
 
                   {/* Color (read-only swatch) */}
                   <td className="py-1 px-1">
                     <span
-                      className="inline-block w-4 h-4 rounded-sm border border-gray-600"
+                      className="inline-block w-4 h-4 rounded-sm border border-gray-300"
                       style={{ background: lbl.color ?? '#000000' }}
                       title={lbl.color ?? '#000000'}
                     />
@@ -134,7 +134,7 @@ export function LabelTable() {
         </table>
 
         {filtered.length === 0 && searchQuery && (
-          <div className="text-center text-gray-600 text-xs py-4">No matches for "{searchQuery}"</div>
+          <div className="text-center text-gray-400 text-xs py-4">No matches for "{searchQuery}"</div>
         )}
       </div>
     </div>

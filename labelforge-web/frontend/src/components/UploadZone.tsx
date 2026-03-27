@@ -36,8 +36,8 @@ export function UploadZone({ onFile, loading }: UploadZoneProps) {
       className={`flex flex-col items-center justify-center gap-3 border-2 border-dashed rounded-xl p-10 cursor-pointer transition-colors select-none
         ${
           dragging
-            ? 'border-brand-500 bg-brand-500/10'
-            : 'border-gray-600 hover:border-brand-500 hover:bg-gray-800/50'
+            ? 'border-brand-500 bg-brand-50'
+            : 'border-gray-300 hover:border-brand-500 hover:bg-brand-50/60'
         }
         ${loading ? 'pointer-events-none opacity-60' : ''}
       `}
@@ -51,12 +51,12 @@ export function UploadZone({ onFile, loading }: UploadZoneProps) {
       />
       <div className="text-4xl">📄</div>
       {loading ? (
-        <p className="text-gray-400 text-sm">Uploading…</p>
+        <p className="text-gray-500 text-sm">Uploading…</p>
       ) : (
         <>
-          <p className="text-gray-300 font-medium">Drop a PDF or .ai file here</p>
+          <p className="text-gray-700 font-medium">Drop a PDF or .ai file here</p>
           <p className="text-gray-500 text-sm">or click to browse</p>
-          <p className="text-gray-600 text-xs mt-1">.pdf · .ai supported</p>
+          <p className="text-gray-400 text-xs mt-1">.pdf · .ai supported</p>
         </>
       )}
     </div>

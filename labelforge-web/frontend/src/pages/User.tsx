@@ -32,10 +32,11 @@ export default function User() {
   const [selectedProfile, setSelectedProfile] = useState('')
   const [profiles, setProfiles] = useState<ConfigSummary[]>([])
   const [loadingProfile, setLoadingProfile] = useState(false)
-  const [applying, setApplying] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [outputFormat, setOutputFormat] = useState<'pdf' | 'ai'>('pdf')
   const [canvasSize, setCanvasSize] = useState({ w: 800, h: 1000, scale: 1 })
+  const [previewing, setPreviewing] = useState(false)
+  const [previewMode, setPreviewMode] = useState(false)
+  const [previewKey, setPreviewKey] = useState(0)
 
   // Guard: redirect if not logged in
   useEffect(() => {
@@ -127,21 +128,26 @@ export default function User() {
     }
   }
 
-  const handleGenerate = useCallback(async () => {
+  const refreshPreview = useCallback(async () => {
     if (!sessionId) return
-    setApplying(true)
+    setPreviewing(true)
     try {
       const toApply = editableLabels.filter((l) => l.new_text !== null)
-      const res = await applyLabels(sessionId, toApply, outputFormat)
-      if (res.warning) addToast(res.warning, 'warning')
-      addToast(`Applied ${res.changed_count} change(s). Ready to download.`, 'success')
+      await applyLabels(sessionId, toApply, 'pdf')
       setIsDone(true)
+      setPreviewKey((k) => k + 1)
     } catch (err) {
       addToast(String(err), 'error')
     } finally {
-      setApplying(false)
+      setPreviewing(false)
     }
-  }, [sessionId, editableLabels, outputFormat, addToast, setIsDone])
+  }, [sessionId, editableLabels, addToast, setIsDone])
+
+  const handlePreview = useCallback(async () => {
+    await refreshPreview()
+    setPreviewMode(true)
+  }, [refreshPreview])
+
 
   async function handleDeleteLabel(name: string) {
     try {
@@ -170,62 +176,82 @@ export default function User() {
     navigate('/login')
   }
 
-  const hasSession = !!sessionId
-  const editedCount = editableLabels.filter((l) => l.new_text !== null).length
   const isEditorOpen = activeLabel !== null
 
+
   return (
-    <div className="min-h-screen bg-gray-950 flex flex-col">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Top bar */}
-      <header className="flex items-center justify-between px-6 py-3 border-b border-gray-800 bg-gray-900">
-        <div className="flex items-center gap-3">
-          <span className="text-xl">🏷️</span>
-          <span className="font-bold text-gray-100">LabelForge</span>
+      <header className="flex items-center justify-between px-5 py-3 border-b border-gray-200 bg-white shadow-sm">
+        <div className="flex items-center gap-2.5">
+          <span className="text-lg">🏷️</span>
+          <span className="font-bold text-gray-900 tracking-tight">LabelForge</span>
         </div>
-        {isEditorOpen && (
-          <button
-            onClick={handleBackToList}
-            className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-          >
-            ← Labels
-          </button>
-        )}
-        <button onClick={handleLogout} className="btn-secondary text-sm py-1.5">Logout</button>
+        <div className="flex items-center gap-2">
+          {isEditorOpen && (
+            <button onClick={handleBackToList} className="btn-ghost">
+              ← Labels
+            </button>
+          )}
+          <button onClick={handleLogout} className="btn-ghost">Logout</button>
+        </div>
       </header>
 
       {/* LIST VIEW */}
       {!isEditorOpen && (
         <div className="flex-1 overflow-y-auto">
-          <div className="max-w-2xl mx-auto px-4 py-8 space-y-4">
+          <div className="max-w-2xl mx-auto px-4 py-10 space-y-5">
             <div className="flex items-center justify-between">
-              <h2 className="text-gray-200 font-semibold">Labels</h2>
-              <button onClick={openNewEditor} className="btn-primary text-sm py-1.5 px-4">+ Add</button>
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">My Labels</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Saved text-replacement sets</p>
+              </div>
+              <button onClick={openNewEditor} className="btn-primary text-sm py-1.5 px-4 flex items-center gap-1.5">
+                <span className="text-base leading-none">+</span> New Label
+              </button>
             </div>
             {loadingList ? (
-              <p className="text-gray-500 text-sm">Loading…</p>
+              <div className="flex items-center gap-2 text-gray-600 text-sm py-6">
+                <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                </svg>
+                Loading…
+              </div>
             ) : userLabels.length === 0 ? (
-              <p className="text-gray-600 text-sm">No labels yet. Click "+ Add" to create one.</p>
+              <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-600">
+                <svg className="w-10 h-10 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                </svg>
+                <p className="text-sm">No labels yet</p>
+                <button onClick={openNewEditor} className="btn-primary text-sm py-1.5 px-4 mt-1">Create your first label</button>
+              </div>
             ) : (
               <div className="flex flex-col gap-2">
                 {userLabels.map((ul) => (
                   <div
                     key={ul.name}
-                    className="flex items-center justify-between gap-3 rounded-lg border border-gray-700 bg-gray-800/50 px-4 py-3"
+                    className="group flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50 px-4 py-3.5 transition-all duration-150 cursor-pointer shadow-sm"
+                    onClick={() => openExistingEditor(ul)}
                   >
                     <div className="min-w-0">
-                      <div className="font-medium text-gray-200 text-sm truncate">{ul.name}</div>
-                      <div className="text-xs text-gray-600 mt-0.5">{ul.profile_name} · {new Date(ul.updated_at).toLocaleDateString()}</div>
+                      <div className="font-semibold text-gray-900 text-sm truncate">{ul.name}</div>
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        <span className="text-gray-500">{ul.profile_name}</span>
+                        <span className="mx-1.5 text-gray-300">·</span>
+                        {new Date(ul.updated_at).toLocaleDateString()}
+                      </div>
                     </div>
-                    <div className="flex gap-2 shrink-0">
+                    <div className="flex items-center gap-1 shrink-0">
                       <button
-                        onClick={() => openExistingEditor(ul)}
-                        className="text-xs text-brand-400 hover:text-brand-300 transition-colors"
+                        onClick={(e) => { e.stopPropagation(); openExistingEditor(ul) }}
+                        className="opacity-0 group-hover:opacity-100 btn-ghost text-brand-400 hover:text-brand-300"
                       >
                         Edit
                       </button>
                       <button
-                        onClick={() => handleDeleteLabel(ul.name)}
-                        className="text-xs text-gray-600 hover:text-red-400 transition-colors"
+                        onClick={(e) => { e.stopPropagation(); handleDeleteLabel(ul.name) }}
+                        className="opacity-0 group-hover:opacity-100 btn-ghost text-gray-600 hover:text-red-400"
                       >
                         Remove
                       </button>
@@ -237,29 +263,38 @@ export default function User() {
           </div>
         </div>
       )}
+
       {/* EDITOR VIEW */}
       {isEditorOpen && (
         <div className='flex flex-1 overflow-hidden'>
           {/* Left panel */}
-          <div className='w-80 shrink-0 flex flex-col border-r border-gray-800 bg-gray-900 overflow-hidden'>
-            <div className='p-4 space-y-3 border-b border-gray-800 shrink-0'>
-              {/* Back + heading */}
-              <div className='flex items-center gap-2'>
-                <button
-                  onClick={handleBackToList}
-                  className='text-xs text-gray-500 hover:text-gray-300 transition-colors'
-                >
-                  ← Labels
-                </button>
-              </div>
-              {/* Profile dropdown */}
-              <div>
-                <label className='block text-xs text-gray-500 mb-1'>Profile</label>
+          <div className='w-80 shrink-0 flex flex-col border-r border-gray-200 bg-white overflow-hidden'>
+            {/* Panel header */}
+            <div className='px-4 py-3 border-b border-gray-200 flex items-center gap-2'>
+              <button
+                onClick={handleBackToList}
+                className='btn-ghost p-1.5 -ml-1 text-gray-500'
+                title='Back to labels'
+              >
+                <svg className='w-4 h-4' fill='none' viewBox='0 0 24 24' stroke='currentColor'>
+                  <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M15 19l-7-7 7-7' />
+                </svg>
+              </button>
+              <span className='text-sm font-semibold text-gray-900 truncate'>
+                {activeLabel || 'New Label'}
+              </span>
+            </div>
+
+            {/* Controls */}
+            <div className='p-4 space-y-4 border-b border-gray-200 shrink-0'>
+              {/* Profile */}
+              <div className='space-y-1.5'>
+                <label className='label-tag'>Profile</label>
                 <select
                   value={selectedProfile}
                   onChange={(e) => handleProfileChange(e.target.value)}
                   disabled={loadingProfile}
-                  className='w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-brand-500'
+                  className='input-field'
                 >
                   <option value=''>— select profile —</option>
                   {profiles.map((p) => (
@@ -268,124 +303,126 @@ export default function User() {
                 </select>
               </div>
               {/* Label name */}
-              <div>
-                <label className='block text-xs text-gray-500 mb-1'>Label name</label>
+              <div className='space-y-1.5'>
+                <label className='label-tag'>Label name</label>
                 <input
                   type='text'
                   value={labelName}
                   onChange={(e) => setLabelName(e.target.value)}
                   placeholder='e.g. Client X'
-                  className='w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-brand-500'
+                  className='input-field'
                 />
               </div>
-              {/* Save Label */}
+              {/* Save */}
               <button
                 onClick={handleSaveLabel}
                 disabled={saving}
-                className='btn-secondary text-xs py-1.5 w-full'
+                className='btn-secondary text-sm py-2 w-full'
               >
                 {saving ? 'Saving…' : 'Save Label'}
               </button>
-              {/* Format picker + Generate */}
-              <div className='space-y-1.5'>
-                <label className='block text-xs text-gray-500'>Output format</label>
-                <div className='flex rounded overflow-hidden border border-gray-700'>
-                  <button
-                    onClick={() => setOutputFormat('pdf')}
-                    className={`flex-1 text-xs py-1.5 transition-colors ${
-                      outputFormat === 'pdf'
-                        ? 'bg-brand-600 text-white'
-                        : 'bg-gray-800 text-gray-400 hover:text-gray-200'
-                    }`}
-                  >
-                    PDF
-                  </button>
-                  <button
-                    onClick={() => setOutputFormat('ai')}
-                    className={`flex-1 text-xs py-1.5 transition-colors ${
-                      outputFormat === 'ai'
-                        ? 'bg-brand-600 text-white'
-                        : 'bg-gray-800 text-gray-400 hover:text-gray-200'
-                    }`}
-                  >
-                    AI
-                  </button>
-                </div>
-                <button
-                  onClick={handleGenerate}
-                  disabled={!sessionId || applying}
-                  className='btn-primary text-xs py-1.5 w-full'
-                >
-                  {applying ? 'Generating…' : `Generate ${outputFormat.toUpperCase()}`}
-                </button>
-              </div>
-              {isDone && sessionId && (
-                <a
-                  href={downloadUrl(sessionId)}
-                  download
-                  className='block text-center text-xs text-brand-400 hover:text-brand-300 transition-colors'
-                >
-                  ↓ Download {outputFormat.toUpperCase()}
-                </a>
-              )}
             </div>
-            {/* UserForm */}
+
+            {/* Fields list */}
             <div className='flex-1 overflow-y-auto'>
               {loadingProfile ? (
-                <p className='text-gray-500 text-sm p-4'>Loading profile…</p>
+                <div className='flex items-center gap-2 text-gray-600 text-sm p-4'>
+                  <svg className='animate-spin w-4 h-4' viewBox='0 0 24 24' fill='none'>
+                    <circle className='opacity-25' cx='12' cy='12' r='10' stroke='currentColor' strokeWidth='4'/>
+                    <path className='opacity-75' fill='currentColor' d='M4 12a8 8 0 018-8v8z'/>
+                  </svg>
+                  Loading profile…
+                </div>
               ) : (
-                <UserForm />
+                <UserForm onFieldBlur={previewMode ? refreshPreview : undefined} />
               )}
             </div>
           </div>
 
-          {/* Right panel: PDF viewer */}
-          <div className='flex-1 flex flex-col overflow-hidden bg-gray-950'>
+          {/* Right panel */}
+          <div className='flex-1 flex flex-col overflow-hidden bg-gray-50'>
+            {/* Tab bar */}
+            {sessionId && (
+              <div className='flex border-b border-gray-200 bg-white shrink-0'>
+                <button
+                  onClick={() => setPreviewMode(false)}
+                  className={`px-4 py-2.5 text-xs font-semibold border-b-2 transition-colors ${
+                    !previewMode
+                      ? 'border-brand-500 text-gray-900'
+                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Original
+                </button>
+                <button
+                  onClick={() => { if (isDone) setPreviewMode(true); else handlePreview() }}
+                  className={`px-4 py-2.5 text-xs font-semibold border-b-2 transition-colors ${
+                    previewMode
+                      ? 'border-brand-500 text-gray-900'
+                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  {previewing ? 'Generating…' : 'Preview'}
+                </button>
+              </div>
+            )}
             {sessionId ? (
-              <>
+              previewMode ? (
                 <PdfViewer
-                  url={previewUrl(sessionId)}
+                  url={`${downloadUrl(sessionId)}?v=${previewKey}`}
                   page={currentPage}
                   onDimensions={handleDimensions}
-                  overlay={
-                    <AdminOverlay
-                      canvasWidth={canvasSize.w}
-                      canvasHeight={canvasSize.h}
-                      pdfScale={canvasSize.scale}
-                      currentPage={currentPage}
-                    />
-                  }
                 />
-                {pageCount > 1 && (
-                  <div className='flex items-center justify-center gap-4 py-2 border-t border-gray-800'>
-                    <button
-                      onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
-                      disabled={currentPage === 0}
-                      className='text-xs text-gray-400 hover:text-gray-200 disabled:opacity-30'
-                    >
-                      ← Prev
-                    </button>
-                    <span className='text-xs text-gray-500'>
-                      {currentPage + 1} / {pageCount}
-                    </span>
-                    <button
-                      onClick={() => setCurrentPage(Math.min(pageCount - 1, currentPage + 1))}
-                      disabled={currentPage === pageCount - 1}
-                      className='text-xs text-gray-400 hover:text-gray-200 disabled:opacity-30'
-                    >
-                      Next →
-                    </button>
-                  </div>
-                )}
-              </>
+              ) : (
+                <>
+                  <PdfViewer
+                    url={previewUrl(sessionId)}
+                    page={currentPage}
+                    onDimensions={handleDimensions}
+                    overlay={
+                      <AdminOverlay
+                        canvasWidth={canvasSize.w}
+                        canvasHeight={canvasSize.h}
+                        pdfScale={canvasSize.scale}
+                        currentPage={currentPage}
+                      />
+                    }
+                  />
+                  {pageCount > 1 && (
+                    <div className='flex items-center justify-center gap-4 py-2.5 border-t border-gray-200 bg-white'>
+                      <button
+                        onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
+                        disabled={currentPage === 0}
+                        className='btn-ghost py-1 px-2 disabled:opacity-30'
+                      >
+                        ← Prev
+                      </button>
+                      <span className='text-xs font-medium text-gray-500'>
+                        {currentPage + 1} <span className='text-gray-300'>/</span> {pageCount}
+                      </span>
+                      <button
+                        onClick={() => setCurrentPage(Math.min(pageCount - 1, currentPage + 1))}
+                        disabled={currentPage === pageCount - 1}
+                        className='btn-ghost py-1 px-2 disabled:opacity-30'
+                      >
+                        Next →
+                      </button>
+                    </div>
+                  )}
+                </>
+              )
             ) : (
-              <div className='flex-1 flex items-center justify-center'>
-                <p className='text-gray-600 text-sm'>Select a profile to load the PDF preview.</p>
+              <div className='flex-1 flex flex-col items-center justify-center gap-3 text-gray-600'>
+                <svg className='w-12 h-12 opacity-30' fill='none' viewBox='0 0 24 24' stroke='currentColor'>
+                  <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={1} d='M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' />
+                </svg>
+                <p className='text-sm'>Select a profile to preview the PDF</p>
               </div>
             )}
           </div>
         </div>
       )}
+
     </div>
   )
 }

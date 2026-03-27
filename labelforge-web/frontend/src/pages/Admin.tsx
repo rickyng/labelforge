@@ -9,13 +9,11 @@ import { useToast } from '../components/Toast'
 import { UploadZone } from '../components/UploadZone'
 import { useLabels } from '../context/LabelsContext'
 
-type AdminTab = 'profiles' | 'labels'
-
 export default function Admin() {
   const navigate = useNavigate()
   const { addToast } = useToast()
   const {
-    labels, setLabels, sessionId, setSessionId,
+    setLabels, sessionId, setSessionId,
     pageCount, setPageCount, currentPage, setCurrentPage,
     editableSet,
     loadEditableIds,
@@ -30,7 +28,6 @@ export default function Admin() {
   const [showUpload, setShowUpload] = useState(false)
   const [filename, setFilename] = useState('')
   const [profileName, setProfileName] = useState('')
-  const [activeTab, setActiveTab] = useState<AdminTab>('profiles')
 
   // Guard: redirect if not admin
   useEffect(() => {
@@ -70,7 +67,6 @@ export default function Admin() {
         if (res.warning) addToast(res.warning, 'warning')
         addToast(`Extracted ${res.labels.length} label(s)`, 'success')
         setShowUpload(false)
-        setActiveTab('labels')
       } catch (err) {
         addToast(String(err), 'error')
       } finally {
@@ -91,7 +87,6 @@ export default function Admin() {
       loadEditableIds(res.editable_ids)
       setFilename(cfg.filename)
       setProfileName(cfg.name || cfg.filename)
-            setActiveTab('labels')
     } catch (err) {
       addToast(String(err), 'error')
     }
@@ -131,21 +126,16 @@ export default function Admin() {
     navigate('/login')
   }
 
-  function handleBackToProfiles() {
+  function handleClearSession() {
     setSessionId(null)
     setLabels([])
     setFilename('')
-        setActiveTab('profiles')
+    setProfileName('')
     refreshProfiles()
   }
 
   const hasSession = !!sessionId
   const editableCount = editableSet.size
-
-  const tabs: { id: AdminTab; label: string }[] = [
-    { id: 'profiles', label: 'Profiles' },
-    { id: 'labels', label: 'Labels' },
-  ]
 
   const pdfPanel = hasSession ? (
     <div className="flex flex-col flex-1 min-w-0 overflow-y-auto p-4 gap-3">
@@ -184,58 +174,34 @@ export default function Admin() {
   ) : null
 
   return (
-    <div className="min-h-screen bg-gray-950 flex flex-col">
+    <div className="min-h-screen bg-white flex flex-col">
       {/* Top bar */}
-      <header className="flex items-center justify-between px-6 py-3 border-b border-gray-800 bg-gray-900">
+      <header className="flex items-center justify-between px-6 py-3 border-b border-gray-200 bg-white shadow-sm">
         <div className="flex items-center gap-3">
           <span className="text-xl">🏷️</span>
-          <span className="font-bold text-gray-100">LabelForge</span>
+          <span className="font-bold text-gray-900">LabelForge</span>
           <span className="text-xs bg-brand-600 text-white px-2 py-0.5 rounded-full">Admin</span>
         </div>
-        {filename && <span className="text-gray-400 text-sm truncate max-w-xs">{filename}</span>}
+        {filename && <span className="text-gray-500 text-sm truncate max-w-xs">{filename}</span>}
         <button onClick={handleLogout} className="btn-secondary text-sm py-1.5">Logout</button>
       </header>
-
-      {/* Tab bar */}
-      <div className="flex gap-1 px-4 pt-2 pb-0 border-b border-gray-800 bg-gray-900">
-        {tabs.map((tab) => {
-          const disabled = tab.id === 'labels' && !hasSession
-          return (
-            <button
-              key={tab.id}
-              onClick={() => !disabled && setActiveTab(tab.id)}
-              disabled={disabled}
-              className={`px-4 py-1.5 text-sm rounded-t transition-colors ${
-                activeTab === tab.id
-                  ? 'bg-gray-950 text-gray-100 border border-b-0 border-gray-700'
-                  : disabled
-                  ? 'text-gray-700 cursor-not-allowed'
-                  : 'text-gray-500 hover:text-gray-300'
-              }`}
-            >
-              {tab.label}
-            </button>
-          )
-        })}
-      </div>
 
       {/* Content */}
       <div className="flex flex-1 overflow-hidden">
 
-        {/* PROFILES TAB */}
-        {activeTab === 'profiles' && (
+        {/* LEFT: Profiles sidebar */}
+        <div className="w-80 shrink-0 border-r border-gray-200 bg-white flex flex-col overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+            <h2 className="font-semibold text-gray-900 text-sm">Profiles</h2>
+            <button
+              onClick={() => setShowUpload((v) => !v)}
+              className="btn-secondary text-xs py-1.5 px-3"
+            >
+              {showUpload ? 'Cancel' : '+ Add Profile'}
+            </button>
+          </div>
           <div className="flex-1 overflow-y-auto">
-            <div className="max-w-2xl mx-auto px-4 py-8 space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-gray-200 font-semibold">Profiles</h2>
-                <button
-                  onClick={() => setShowUpload((v) => !v)}
-                  className="btn-secondary text-xs py-1.5 px-3"
-                >
-                  {showUpload ? 'Cancel' : '+ Add Profile'}
-                </button>
-              </div>
-
+          <div className="px-4 py-4 space-y-4">
               {showUpload && (
                 <div className="space-y-2">
                   <UploadZone onFile={handleFile} loading={uploading || analyzing} />
@@ -246,42 +212,39 @@ export default function Admin() {
               )}
 
               {loadingProfiles ? (
-                <p className="text-gray-500 text-sm">Loading…</p>
+                <p className="text-gray-400 text-sm">Loading…</p>
               ) : profiles.length === 0 && !showUpload ? (
-                <p className="text-gray-600 text-sm">No profiles yet. Click "+ Add Profile" to upload a file.</p>
+                <p className="text-gray-500 text-sm">No profiles yet. Click "+ Add Profile" to upload a file.</p>
               ) : (
                 <div className="flex flex-col gap-2">
                   {profiles.map((cfg) => (
                     <div
                       key={cfg.name}
-                      className="flex items-center justify-between gap-3 rounded-lg border border-gray-700 bg-gray-800/50 px-4 py-3"
+                      className={`flex items-center justify-between gap-3 rounded-lg border px-4 py-3 cursor-pointer transition-colors ${
+                        profileName === cfg.name
+                          ? 'border-brand-500 bg-brand-50'
+                          : 'border-gray-200 bg-gray-50 hover:border-gray-300'
+                      }`}
+                      onClick={() => handleLoadProfile(cfg)}
                     >
                       <div className="min-w-0">
-                        <div className="font-medium text-gray-200 text-sm truncate">{cfg.name || cfg.filename}</div>
+                        <div className="font-medium text-gray-800 text-sm truncate">{cfg.name || cfg.filename}</div>
                         {cfg.name && cfg.name !== cfg.filename && (
-                          <div className="text-xs text-gray-600 truncate">{cfg.filename}</div>
+                          <div className="text-xs text-gray-400 truncate">{cfg.filename}</div>
                         )}
-                        <div className="flex gap-3 mt-0.5 text-xs text-gray-600">
+                        <div className="flex gap-3 mt-0.5 text-xs text-gray-500">
                           <span>{cfg.editable_count} editable</span>
-                          <span>{cfg.page_count} page{cfg.page_count !== 1 ? 's' : ''}</span>
+                          <span>{cfg.page_count}p</span>
                           <span>.{cfg.file_type}</span>
-                          <span>{new Date(cfg.updated_at).toLocaleDateString()}</span>
                         </div>
                       </div>
                       <div className="flex gap-2 shrink-0">
                         <button
-                          onClick={() => handleLoadProfile(cfg)}
-                          className="text-xs text-brand-400 hover:text-brand-300 transition-colors"
-                          title="Load into Labels tab to edit"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleDeleteProfile(cfg.name)}
-                          className="text-xs text-gray-600 hover:text-red-400 transition-colors"
+                          onClick={(e) => { e.stopPropagation(); handleDeleteProfile(cfg.name) }}
+                          className="text-xs text-gray-400 hover:text-red-500 transition-colors"
                           title="Remove profile"
                         >
-                          Remove
+           Remove
                         </button>
                       </div>
                     </div>
@@ -290,32 +253,34 @@ export default function Admin() {
               )}
             </div>
           </div>
-        )}
+        </div>
 
-        {/* LABELS TAB */}
-        {activeTab === 'labels' && hasSession && (
+        {/* RIGHT: PDF preview + label editor (shown when a profile is loaded) */}
+        {hasSession && (
           <>
             {pdfPanel}
-            <div className="w-[30rem] shrink-0 border-l border-gray-800 bg-gray-900 flex flex-col overflow-hidden">
-              {/* Header with Save Profile prominent at top */}
-              <div className="px-4 py-3 border-b border-gray-800 space-y-2">
+            <div className="w-96 shrink-0 border-l border-gray-200 bg-white flex flex-col overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-200 space-y-2">
                 <div className="flex items-center justify-between">
-                  <button
-                    onClick={handleBackToProfiles}
-                    className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-                  >
-                    ← Profiles
-                  </button>
-                  <span className="text-gray-600 text-xs">
-                    {editableCount > 0 ? `${editableCount} editable` : 'none editable'}
-                  </span>
+                  <span className="text-sm font-semibold text-gray-900 truncate">{profileName || filename}</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-gray-400 text-xs">
+                      {editableCount > 0 ? `${editableCount} editable` : 'none editable'}
+                    </span>
+                    <button
+                      onClick={handleClearSession}
+                      className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      ✕
+                    </button>
+                  </div>
                 </div>
                 <input
                   type="text"
                   value={profileName}
                   onChange={(e) => setProfileName(e.target.value)}
                   placeholder="Profile name…"
-                  className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-brand-500"
+                  className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-brand-500"
                 />
                 <button
                   onClick={handleSaveConfig}
@@ -331,7 +296,6 @@ export default function Admin() {
             </div>
           </>
         )}
-
 
       </div>
     </div>

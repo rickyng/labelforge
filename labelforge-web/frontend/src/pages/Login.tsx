@@ -25,37 +25,37 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-950">
-      <div className="w-full max-w-sm space-y-6">
-        {/* Logo / title */}
-        <div className="text-center space-y-1">
-          <div className="text-5xl">🏷️</div>
-          <h1 className="text-2xl font-bold tracking-tight">LabelForge Web</h1>
+    <div className="min-h-screen flex items-center justify-center bg-white px-4">
+      <div className="w-full max-w-sm space-y-8">
+        {/* Logo */}
+        <div className="text-center space-y-2">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-brand-50 border border-brand-200 text-3xl mb-1">
+            🏷️
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight text-gray-900">LabelForge</h1>
           <p className="text-gray-500 text-sm">PDF text label editor</p>
         </div>
 
-        {/* Login card */}
+        {/* Card */}
         <form
           onSubmit={handleSubmit}
-          className="card space-y-4"
+          className="bg-white border border-gray-200 rounded-2xl p-6 space-y-5 shadow-sm"
         >
-          <h2 className="font-semibold text-gray-300">Sign in</h2>
-
-          <div className="space-y-1">
-            <label className="text-xs text-gray-500">Username</label>
+          <div className="space-y-1.5">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-600">Username</label>
             <input
               type="text"
               autoComplete="username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="input-field"
-              placeholder="admin or user"
+              placeholder="Enter username"
               required
             />
           </div>
 
-          <div className="space-y-1">
-            <label className="text-xs text-gray-500">Password</label>
+          <div className="space-y-1.5">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-600">Password</label>
             <input
               type="password"
               autoComplete="current-password"
@@ -67,13 +67,12 @@ export default function Login() {
             />
           </div>
 
-          <button type="submit" disabled={loading} className="btn-primary w-full">
+          <button type="submit" disabled={loading} className="btn-primary w-full mt-2">
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
 
-          <p className="text-center text-gray-600 text-xs">
-            Demo credentials: <code className="text-gray-400">admin / admin123</code> ·{' '}
-            <code className="text-gray-400">user / user123</code>
+          <p className="text-center text-gray-400 text-xs pt-1">
+            Demo: <code className="text-gray-500">admin / admin123</code> · <code className="text-gray-500">user / user123</code>
           </p>
         </form>
       </div>
