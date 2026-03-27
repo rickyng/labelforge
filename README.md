@@ -1,14 +1,12 @@
 # LabelForge
 
-A professional CLI tool for high-fidelity PDF and Adobe Illustrator (.ai) text label editing.
+A professional PDF and Adobe Illustrator (.ai) text label editor — available as both a **CLI tool** and a **web application**.
 
 **Extract → Edit → Re-apply** — without touching anything else in your document.
 
 ## Why LabelForge?
 
-Most PDF text-editing approaches re-render the entire document, losing fonts, image
-compression, vector quality, and searchability. LabelForge uses a **redact-then-insert**
-strategy:
+Most PDF text-editing approaches re-render the entire document, losing fonts, image compression, vector quality, and searchability. LabelForge uses a **redact-then-insert** strategy:
 
 1. `page.apply_redactions()` erases *only* the pixels under the changed span.
 2. New text is inserted as real Unicode glyphs — fully searchable.
@@ -18,44 +16,95 @@ Result: smaller output file, pixel-perfect quality preservation.
 
 ### Adobe Illustrator (.ai) Support
 
-Modern `.ai` files contain an embedded PDF compatibility layer. LabelForge opens this
-layer directly via PyMuPDF — no Illustrator installation required.
+Modern `.ai` files contain an embedded PDF compatibility layer. LabelForge opens this layer directly via PyMuPDF — no Illustrator installation required.
 
-**Limitations to be aware of:**
-- Only text spans are extracted and edited. Background vectors, paths, gradients,
-  symbols, and effects are preserved in the output but cannot be modified.
-- Saving back as `.ai` produces a PDF file with a `.ai` extension — it is **not** a
-  true native Illustrator file. For full Illustrator compatibility, open the output
-  in Illustrator and use **File > Save As > Adobe Illustrator (.ai)**.
-- For best results, export your `.ai` to PDF first in Illustrator
-  (**File > Save As > PDF**, uncheck *Preserve Illustrator Editing Capabilities*)
-  before running LabelForge.
+**Limitations:**
+- Only text spans are extracted and edited. Background vectors, paths, gradients, symbols, and effects are preserved but cannot be modified.
+- Saving back as `.ai` produces a PDF file with a `.ai` extension — not a true native Illustrator file.
+- For best results, export your `.ai` to PDF first in Illustrator (**File > Save As > PDF**, uncheck *Preserve Illustrator Editing Capabilities*) before running LabelForge.
 
 ---
 
-## Installation
+## Architecture
 
-### Using uv (recommended)
-
-```bash
-git clone <repo>
-cd pdf
-uv venv
-source .venv/bin/activate
-uv pip install -e ".[dev]"
+```
+labelforge/            ← project root
+├── labelforge/        ← core library (CLI + Python API)
+├── backend/           ← FastAPI web server
+├── frontend/          ← React + Vite web UI
+└── tests/
 ```
 
-### Using pip
+**Development mode** (two processes):
+```
+React + Vite (port 5173)  →  proxies /api  →  FastAPI (port 8000)
+```
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
+**Production / Docker** (single process, single port):
+```
+FastAPI (port 8000)
+  /api/*          — REST API
+  /assets/*       — built frontend static files
+  /*              — SPA index.html fallback
+
+Routes:
+  /login  — authentication
+  /admin  — full label editor (bbox, font, color controls)
+  /user   — text-only replacement form
 ```
 
 ---
 
-## Workflow
+## Quick Start
+
+### Docker (recommended)
+
+**Prerequisites:** [Docker](https://docs.docker.com/get-docker/) with Compose
+
+```bash
+git clone <repo> && cd labelforge
+make docker-build   # build image (first time or after code changes)
+make docker-up      # start at http://localhost:8000
+```
+
+Open http://localhost:8000 — login with `admin/admin123` or `user/user123`.
+
+```bash
+make docker-logs    # tail logs
+make docker-down    # stop
+make docker-clean   # stop + wipe database volume
+```
+
+### Local development
+
+**Prerequisites:** Python ≥ 3.11, Node.js ≥ 18
+
+```bash
+git clone <repo> && cd labelforge
+make setup   # one-time: creates venv, installs all deps
+make dev     # starts backend :8000 + frontend :5173
+```
+
+Open http://localhost:5173 — login with `admin/admin123` or `user/user123`.
+
+Run `make help` to see all available commands.
+
+### Manual setup (without make)
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[web,dev]"
+cd frontend && npm install && cd ..
+
+# Terminal 1
+uvicorn backend.main:app --reload --port 8000
+# Terminal 2
+cd frontend && npm run dev
+```
+
+---
+
+## CLI Usage
 
 ### PDF Workflow
 
@@ -65,11 +114,11 @@ pip install -e ".[dev]"
 labelforge analyze invoice.pdf --output labels.json
 ```
 
-This produces a `labels.json` with every text span in the PDF.
+Produces a `labels.json` with every text span in the PDF.
 
 #### Step 2 — Edit the JSON
 
-Open `labels.json` in any editor. Find the spans you want to change and set `new_text`:
+Open `labels.json` and set `new_text` on spans you want to change:
 
 ```json
 {
@@ -80,12 +129,7 @@ Open `labels.json` in any editor. Find the spans you want to change and set `new
   "new_text": "Globex Industries",
   "fontname": "Helvetica-Bold",
   "fontsize": 12.0,
-  "color": "#1a1a1a",
-  "flags": 16,
-  "rotation": 0,
-  "block_index": 2,
-  "line_index": 1,
-  "span_index": 0
+  "color": "#1a1a1a"
 }
 ```
 
@@ -102,220 +146,144 @@ labelforge apply invoice.pdf labels.json --output invoice_edited.pdf
 
 ### Adobe Illustrator (.ai) Workflow
 
-#### Step 1 — Extract labels from .ai
+#### Extract labels from .ai
 
 ```bash
 labelforge analyze design.ai --output labels.json
 ```
 
-LabelForge reads the embedded PDF layer of the `.ai` file and extracts all text spans.
-A compatibility warning is shown — this is expected.
-
-#### Step 2 — Edit the JSON
-
-Open `labels.json` and set `new_text` on the labels you want to change:
-
-```json
-{
-  "id": "p0_b5_l2_s0",
-  "original_text": "MADE IN HONG KONG",
-  "new_text": "MADE IN JAPAN"
-}
-```
-
-Leave all other fields unchanged. Labels with `new_text: null` are skipped.
-
-#### Step 3a — Output as PDF (recommended)
-
-Preserves all original artwork. Only the changed text spans are replaced.
+#### Output as PDF (recommended)
 
 ```bash
 labelforge apply design.ai labels.json --output design_edited.pdf --force
 ```
 
-#### Step 3b — Output as .ai
-
-Produces a PDF file with a `.ai` extension. All original artwork is preserved.
-Open the result in Illustrator and use **File > Save As > Adobe Illustrator (.ai)**
-to get a true native `.ai` file.
+#### Output as .ai
 
 ```bash
-labelforge apply design.ai labels.json --output design_edited.ai --output-format ai --force
-```
-
-#### Step 3c — Build from JSON only (no source file)
-
-If the original `.ai` or `.pdf` is unavailable, you can generate a PDF containing
-only the text labels on a blank white page:
-
-```bash
-labelforge build labels.json --output labels_only.pdf --force
-```
-
-> **Note:** Background graphics and vectors are not included in `build` output.
-
----
-
-## Command Reference
-
-### `labelforge analyze`
-
-Accepts `.pdf` or `.ai` input.
-
-```
-Usage: labelforge analyze INPUT [OPTIONS]
-
-Options:
-  -o, --output PATH          Destination labels JSON file  [default: labels.json]
-  --pretty / --compact       Pretty-print JSON output      [default: pretty]
-  -m, --min-font-size FLOAT  Skip spans smaller than this (pt)  [default: 0.0]
-  -p, --page TEXT            Page range e.g. '0-5' or '0,2,4'. Default: all
-  -v, --verbose              Enable debug logging
-```
-
-**Examples:**
-
-```bash
-# Analyze a PDF
-labelforge analyze report.pdf
-
-# Analyze an .ai file
-labelforge analyze design.ai --output labels.json
-
-# Pages 0–4 only, minimum 8pt font, compact JSON
-labelforge analyze report.pdf -o report_labels.json -p 0-4 -m 8 --compact
-```
-
-### `labelforge apply`
-
-Accepts `.pdf` or `.ai` input. Outputs PDF by default; use `--output-format ai`
-to save with a `.ai` extension (content is still PDF — see .ai limitations above).
-
-```
-Usage: labelforge apply INPUT LABELS_JSON [OPTIONS]
-
-Options:
-  -o, --output PATH           Destination file           [default: output.pdf]
-  --output-format [pdf|ai]    Output format              [default: pdf]
-  -b, --backup                Copy input to <input>.bak before writing
-  -f, --force                 Overwrite output if it already exists
-  -v, --verbose               Enable debug logging
-```
-
-**Examples:**
-
-```bash
-# Apply edits to a PDF
-labelforge apply report.pdf labels.json -o report_v2.pdf
-
-# Apply edits to an .ai, output as PDF (preserves all artwork)
-labelforge apply design.ai labels.json --output design_edited.pdf --force
-
-# Apply edits to an .ai, output as .ai
-labelforge apply design.ai labels.json --output design_edited.ai --output-format ai --force
-```
-
-### `labelforge build`
-
-Create a new PDF from a labels JSON file without a source document.
-Useful when the original file is unavailable. Background graphics are not included.
-
-```
-Usage: labelforge build LABELS_JSON [OPTIONS]
-
-Options:
-  -o, --output PATH  Destination PDF file  [default: output.pdf]
-  -f, --force        Overwrite output if it already exists
-  -v, --verbose      Enable debug logging
-```
-
-**Examples:**
-
-```bash
-labelforge build labels.json --output labels_only.pdf --force
-```
-
-### `labelforge convert`
-
-Convert an `.ai` file to PDF.
-
-```
-Usage: labelforge convert INPUT [OPTIONS]
-
-Options:
-  --to TEXT          Output format (currently only 'pdf')  [default: pdf]
-  -o, --output PATH  Destination file
-  -f, --force        Overwrite output if it already exists
-  -v, --verbose      Enable debug logging
-```
-
-**Examples:**
-
-```bash
-labelforge convert design.ai --to pdf --output design.pdf
-```
-
-### `labelforge replace`
-
-Inline replacement — no JSON file needed:
-
-```
-Usage: labelforge replace INPUT_PDF OLD_TEXT NEW_TEXT [OPTIONS]
-
-Options:
-  -o, --output PATH  Destination PDF file  [default: output.pdf]
-  -p, --page TEXT    Limit to page range
-  -a, --all          Replace all occurrences (default: first only)
-  -f, --force        Overwrite output if it already exists
-```
-
-**Examples:**
-
-```bash
-# Replace first occurrence
-labelforge replace contract.pdf "Draft" "FINAL" -o contract_final.pdf
-
-# Replace all, page 0 only
-labelforge replace contract.pdf "v1.0" "v2.0" --all --page 0 -o contract_v2.pdf
+labelforge apply design.ai labels.json --output design_edited.ai --force
 ```
 
 ---
 
-## JSON Schema
+### CLI Reference
+
+#### `labelforge analyze`
+
+```
+Usage: labelforge analyze [OPTIONS] INPUT_FILE
+
+Options:
+  --output FILE       Write labels JSON to FILE (default: print to stdout)
+  --pages TEXT        Page range, e.g. "1", "1-3", "1,3,5" (1-based)
+  --min-fontsize NUM  Exclude spans smaller than NUM pt (default: 0)
+  --no-warn           Suppress .ai compatibility warning
+  --help
+```
+
+#### `labelforge apply`
+
+```
+Usage: labelforge apply [OPTIONS] INPUT_FILE LABELS_FILE
+
+Options:
+  --output FILE           Output file path (required)
+  --force                 Overwrite existing output file
+  --white-out             Fill bounding box with white before inserting text
+  --padding FLOAT         Inset the insertion rect by FLOAT pt on each side
+  --max-scale-down FLOAT  Minimum font scale factor for auto-fit (0.0–1.0)
+  --help
+```
+
+---
+
+## Web Interface
+
+### Starting the servers
+
+```bash
+# Terminal 1 — backend (from project root)
+uvicorn backend.main:app --reload --port 8000
+
+# Terminal 2 — frontend
+cd frontend && npm run dev
+```
+
+- Backend API: http://localhost:8000
+- Swagger docs: http://localhost:8000/docs
+- Frontend: http://localhost:5173
+
+### Login credentials
+
+| Role  | Username | Password   |
+|-------|----------|------------|
+| Admin | `admin`  | `admin123` |
+| User  | `user`   | `user123`  |
+
+### Admin interface (`/admin`)
+
+- Full PDF preview via PDF.js
+- All extracted labels displayed with editable fields:
+  - `new_text` replacement
+  - Bounding box (`x0`, `y0`, `x1`, `y1`) — also draggable on the PDF canvas overlay
+  - Font size and color picker
+  - `auto_fit`, `white_out`, `max_scale_down`, `padding` toggles
+- Output format selector: **PDF** or **.ai** (with warning)
+- "Apply All Changes" → generates output → download button
+
+### User interface (`/user`)
+
+- Same PDF preview
+- Simple form: one text input per label (text replacement only)
+- No position, font, or overflow controls exposed
+- "Generate Updated File" → PDF output only
+
+---
+
+## Web API Reference
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/auth/login` | Login, sets `role` cookie |
+| `POST` | `/api/auth/logout` | Clear cookies |
+| `POST` | `/api/upload` | Upload `.pdf` or `.ai` file |
+| `POST` | `/api/analyze/{sid}` | Extract labels from uploaded file |
+| `POST` | `/api/apply/{sid}` | Apply label edits, produce output |
+| `GET`  | `/api/preview/{sid}` | Stream PDF for preview |
+| `GET`  | `/api/download/{sid}` | Download output file |
+| `GET`  | `/api/configs` | List saved label configs |
+| `GET/PATCH/DELETE` | `/api/configs/{name}` | Manage a saved config |
+| `POST` | `/api/editable/{sid}` | Set editable label IDs for user role |
+| `GET/POST/DELETE` | `/api/labels/{name}` | Manage user label presets |
+
+---
+
+## Label JSON Schema
 
 | Field | Type | Description |
-|---|---|---|
-| `id` | string | Unique ID: `p<page>_b<block>_l<line>_s<span>` |
+|-------|------|-------------|
+| `id` | string | Unique span ID (`p{page}_b{block}_l{line}_s{span}`) |
 | `page` | int | 0-based page index |
-| `bbox` | [x0, y0, x1, y1] | Span bounding box in points (top-left origin) |
-| `original_text` | string | Text as extracted from PDF |
-| `new_text` | string \| null | `null`=skip, `""`=erase, string=replace |
-| `fontname` | string | Font name from PDF |
-| `fontsize` | float | Font size in points |
-| `color` | string | Text color as `#rrggbb` |
-| `flags` | int | Font flags bitmask (bold=16, italic=2) |
+| `bbox` | [x0, y0, x1, y1] | Bounding box in pt (top-left origin) |
+| `original_text` | string | Extracted text |
+| `new_text` | string \| null | Replacement text (`null` = skip) |
+| `fontname` | string | Original font name |
+| `fontsize` | float | Font size in pt |
+| `color` | string | Hex color (`#rrggbb`) |
+| `flags` | int | PyMuPDF font flags bitmask |
 | `rotation` | int | Page rotation in degrees |
-| `block_index` | int | Block index within page |
-| `line_index` | int | Line index within block |
-| `span_index` | int | Span index within line |
 
 ---
 
 ## Coordinate System
 
-PyMuPDF uses a **top-left origin** internally (y=0 at top, increases downward).
-`get_text("dict")` returns bboxes in this system, and `insert_textbox` consumes
-the same system. No coordinate conversion is needed — bbox values can be used directly.
-
-> Note: Some PyMuPDF documentation shows a "PDF bottom-left" coordinate system.
-> That applies to raw PDF operators, not to the Python API used by LabelForge.
+PyMuPDF uses a **top-left origin** (y=0 at top, increases downward). `get_text("dict")` returns bboxes in this system and `insert_textbox` consumes the same system. No coordinate conversion needed.
 
 ---
 
 ## Font Fallback Strategy
 
-When the original PDF font is not a PyMuPDF built-in, LabelForge maps it to the
-closest available built-in:
+When the original font is not a PyMuPDF built-in, LabelForge maps it to the closest available built-in:
 
 | Condition | Built-in key | Name |
 |---|---|---|
@@ -340,25 +308,24 @@ Subset prefixes (`ABCDEF+FontName`) are stripped before matching.
 ## Development
 
 ```bash
-# Run tests
-pytest
-
-# Run with coverage
-pytest --cov=labelforge --cov-report=term-missing
-
-# Lint
-ruff check labelforge tests
-
-# Type check
-mypy labelforge
+make test        # run pytest
+make test-cov    # pytest with coverage
+make lint        # ruff + mypy
+make format      # auto-fix lint issues
+make clean       # remove venv, node_modules, DB
 ```
 
----
+Or directly:
 
-## Future Extensions (Phase 2+)
+```bash
+pytest
+pytest --cov=labelforge --cov-report=term-missing
+ruff check labelforge tests backend
+mypy labelforge backend
+```
 
-- **FastAPI web backend** — REST API for programmatic label editing
-- **React frontend** — visual overlay editor with bbox highlighting
-- **OCR integration** — label support for scanned/image-based PDFs
-- **Batch processing** — process entire directories of PDFs
-- **Font embedding** — embed custom TTF/OTF fonts for exact font matching
+### Environment variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `LABELFORGE_DB_PATH` | `backend/labelforge.db` | Path to the SQLite database file |

@@ -1,0 +1,13 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - labelforge-data:/data
+    environment:
+      - LABELFORGE_DB_PATH=/data/labelforge.db
+    restart: unless-stopped
+
+volumes:
+  labelforge-data:

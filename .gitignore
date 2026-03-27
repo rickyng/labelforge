@@ -26,3 +26,8 @@ env/
 *.json
 *.pdf
 *.ai
+
+# Web
+backend/labelforge.db
+frontend/node_modules/
+frontend/dist/
