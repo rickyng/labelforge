@@ -54,5 +54,17 @@ class DocumentComponent(BaseModel):
     barcode_value: str | None = None
     barcode_format: BarcodeFormat | None = None
 
+    # TEXT span provenance — needed for pixel-perfect apply
+    flags: int | None = None        # font bitmask: bold=16, italic=2
+    rotation: int | None = None     # page rotation in degrees
+    origin: list[float] | None = None  # baseline origin [x, y]
+
     # Whether the component can be edited in the UI
     editable: bool = True
+
+
+class ComponentsFile(BaseModel):
+    """Top-level wrapper for components.json output."""
+
+    source_file: str                     # absolute path to the original input file
+    components: list[DocumentComponent]

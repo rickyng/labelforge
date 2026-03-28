@@ -25,7 +25,7 @@ from rich.theme import Theme
 
 from . import __version__
 from .analyzer import analyze_pdf, analyze_file, extract_labels, _parse_page_range
-from .applier import apply_labels, build_labels, load_labels
+from .applier import apply_from_components, apply_labels, build_labels, load_labels
 from .document_analyzer import extract_components_from_path
 from .models import Label
 from .utils import AI_COMPAT_WARNING, AI_OUTPUT_WARNING, detect_file_type
@@ -115,8 +115,16 @@ def analyze(
     Each span becomes a Label object with id, bbox, original_text, fontname,
     fontsize, color, and more. Set new_text on any label to queue it for
     replacement, then run 'labelforge apply'.
+
+    DEPRECATED: use 'labelforge components' instead, which covers all component
+    types (text, images, barcodes, shapes) and feeds the new apply --components
+    workflow.
     """
     _setup_logging(verbose)
+    console.print(
+        "[warning]Deprecation warning:[/warning] `analyze` is superseded by `components`.\n"
+        "  Use: labelforge components <file> -o components.json"
+    )
 
     if not input_pdf.exists():
         err_console.print(f"[error]Error:[/error] File not found: {input_pdf}")
@@ -196,8 +204,8 @@ def analyze(
 
 @app.command()
 def apply(
-    input_pdf: Annotated[Path, typer.Argument(help="Path to the original PDF or .ai file.")],
-    labels_json: Annotated[Path, typer.Argument(help="Path to the edited labels JSON file.")],
+    input_pdf: Annotated[Optional[Path], typer.Argument(help="Path to the original PDF or .ai file (legacy mode).")] = None,
+    labels_json: Annotated[Optional[Path], typer.Argument(help="Path to the edited labels JSON file (legacy mode).")] = None,
     output: Annotated[
         Path,
         typer.Option("--output", "-o", help="Destination PDF file."),
@@ -211,14 +219,66 @@ def apply(
     output_format: Annotated[
         str, typer.Option("--output-format", help="Output format: pdf or ai.")
     ] = "pdf",
+    components_file: Annotated[
+        Optional[Path],
+        typer.Option("--components", "-c", help="components.json from 'labelforge components'.")
+    ] = None,
+    changes_file: Annotated[
+        Optional[Path],
+        typer.Option("--changes", help="changes.json mapping component_id to new value.")
+    ] = None,
     verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Enable debug logging.")] = False,
 ) -> None:
-    """Apply edited labels JSON to INPUT_PDF (or .ai) and write a modified PDF or .ai.
+    """Apply changes to a PDF or .ai file.
 
-    Only labels where new_text differs from original_text are processed.
-    Use new_text=\"\" to erase a label without inserting replacement text.
+    New mode (recommended):
+      labelforge apply --components components.json --changes changes.json -o out.pdf
+
+    Legacy mode (deprecated):
+      labelforge apply input.pdf labels.json -o out.pdf
     """
     _setup_logging(verbose)
+
+    # --- New mode: --components + --changes ---
+    if components_file is not None or changes_file is not None:
+        if components_file is None or changes_file is None:
+            err_console.print("[error]Error:[/error] Both --components and --changes are required together.")
+            raise typer.Exit(code=1)
+        if not components_file.exists():
+            err_console.print(f"[error]Error:[/error] components file not found: {components_file}")
+            raise typer.Exit(code=1)
+        if not changes_file.exists():
+            err_console.print(f"[error]Error:[/error] changes file not found: {changes_file}")
+            raise typer.Exit(code=1)
+        try:
+            n = apply_from_components(
+                components_path=components_file,
+                changes_path=changes_file,
+                output_path=output,
+                force=force,
+            )
+        except FileExistsError as exc:
+            err_console.print(f"[error]Error:[/error] {exc}")
+            raise typer.Exit(code=1) from exc
+        except Exception as exc:
+            err_console.print(f"[error]Unexpected error:[/error] {exc}")
+            if verbose:
+                import traceback
+                traceback.print_exc()
+            raise typer.Exit(code=2) from exc
+        console.print(Panel(
+            f"[success]Done![/success] {n} component(s) changed → [bold]{output}[/bold]",
+            expand=False,
+        ))
+        return
+
+    # --- Legacy mode: input_pdf + labels_json positional args ---
+    if input_pdf is None or labels_json is None:
+        err_console.print(
+            "[error]Error:[/error] Provide either --components + --changes, "
+            "or INPUT_PDF and LABELS_JSON positional arguments."
+        )
+        raise typer.Exit(code=1)
 
     fmt = output_format.lower()
     if fmt not in ("pdf", "ai"):
@@ -659,22 +719,22 @@ def components(
         raise typer.Exit(code=2) from exc
 
     if filter_types:
-        all_components = [c for c in all_components if c.type.value in filter_types]
+        all_components.components = [
+            c for c in all_components.components if c.type.value in filter_types
+        ]
 
-    data = [
-        {
-            k: v for k, v in c.model_dump().items()
-            if k != "thumbnail_b64"  # omit large base64 blobs from CLI output
-        }
-        for c in all_components
-    ]
+    # Serialize as ComponentsFile (includes source_file); strip large thumbnail blobs
+    raw = all_components.model_dump()
+    for c in raw["components"]:
+        c.pop("thumbnail_b64", None)
 
     indent = 2 if pretty else None
-    output.write_text(json.dumps(data, indent=indent, default=str), encoding="utf-8")
+    output.write_text(json.dumps(raw, indent=indent, default=str), encoding="utf-8")
 
     # Print summary table
     from collections import Counter
-    counts = Counter(c.type.value for c in all_components)
+    comps = all_components.components
+    counts = Counter(c.type.value for c in comps)
     table = Table(title=f"Components — {input_file.name}", show_lines=False)
     table.add_column("Type", style="bold")
     table.add_column("Count", justify="right")
@@ -683,7 +743,7 @@ def components(
             table.add_row(t, str(counts[t]))
     console.print(table)
     console.print(Panel(
-        f"[success]Done![/success] {len(all_components)} component(s) written to [bold]{output}[/bold]",
+        f"[success]Done![/success] {len(comps)} component(s) written to [bold]{output}[/bold]",
         expand=False,
     ))
 

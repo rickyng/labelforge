@@ -19,7 +19,7 @@ from pathlib import Path
 
 import fitz  # PyMuPDF
 
-from .component_models import BarcodeFormat, ComponentType, DocumentComponent
+from .component_models import BarcodeFormat, ComponentType, ComponentsFile, DocumentComponent
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +90,7 @@ def _extract_text_components(
                 bbox = span.get("bbox", (0, 0, 0, 0))
                 color_int = span.get("color", 0)
                 hex_color = f"#{color_int:06x}"
+                origin = span.get("origin")
                 out.append(DocumentComponent(
                     id=f"p{page_num}_t_b{b_idx}_l{l_idx}_s{s_idx}",
                     type=ComponentType.TEXT,
@@ -99,6 +100,9 @@ def _extract_text_components(
                     fontname=span.get("font", ""),
                     fontsize=float(span.get("size", 0)),
                     color=hex_color,
+                    flags=span.get("flags"),
+                    rotation=page.rotation,
+                    origin=list(origin) if origin else None,
                     editable=True,
                 ))
 
@@ -267,13 +271,21 @@ def extract_components(doc: fitz.Document) -> list[DocumentComponent]:
     return components
 
 
-def extract_components_from_path(input_path: Path) -> list[DocumentComponent]:
-    """Convenience wrapper: open a PDF/AI file and extract all components."""
+def extract_components_from_path(input_path: Path) -> ComponentsFile:
+    """Convenience wrapper: open a PDF/AI file and extract all components.
+
+    Returns a ComponentsFile that embeds the absolute source path so that
+    `labelforge apply --components` needs no separate input file argument.
+    """
     doc = fitz.open(str(input_path))
     try:
-        return extract_components(doc)
+        components = extract_components(doc)
     finally:
         doc.close()
+    return ComponentsFile(
+        source_file=str(input_path.resolve()),
+        components=components,
+    )
 
 
 

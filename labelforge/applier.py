@@ -60,13 +60,6 @@ def load_labels(json_path: Path) -> list[Label]:
     return labels
 
 
-def _css_color(hex_str: str) -> str:
-    """Convert #rrggbb to CSS rgb() string for insert_htmlbox."""
-    h = hex_str.lstrip("#")
-    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
-    return f"rgb({r},{g},{b})"
-
-
 def _insert_htmlbox(
     page: fitz.Page,
     rect: fitz.Rect,
@@ -366,6 +359,116 @@ def apply_labels(
         doc.close()
 
     return total_changed
+
+
+def apply_from_components(
+    components_path: Path,
+    changes_path: Path,
+    output_path: Path,
+    force: bool = False,
+) -> int:
+    """Apply changes to a document using components.json + changes.json.
+
+    The source file path is embedded in components.json so no separate
+    input file argument is needed.
+
+    Args:
+        components_path: Path to components.json from ``labelforge components``.
+        changes_path: Path to changes.json — a ``{component_id: new_value}`` map.
+        output_path: Destination path for the modified PDF.
+        force: If True, overwrite ``output_path`` if it already exists.
+
+    Returns:
+        Number of components actually changed.
+    """
+    from .component_models import ComponentsFile, ComponentType, BarcodeFormat as BFmt
+    from .barcode_handler import apply_barcode_replacement
+
+    with components_path.open("r", encoding="utf-8") as fh:
+        cf = ComponentsFile.model_validate(json.load(fh))
+    input_path = Path(cf.source_file)
+
+    with changes_path.open("r", encoding="utf-8") as fh:
+        changes: dict[str, str] = json.load(fh)
+
+    if not changes:
+        logger.info("No changes in changes.json — nothing to do.")
+        shutil.copy2(input_path, output_path)
+        return 0
+
+    comp_by_id = {c.id: c for c in cf.components}
+    text_labels: list[Label] = []
+    barcode_jobs: list[tuple] = []
+
+    for cid, new_value in changes.items():
+        comp = comp_by_id.get(cid)
+        if comp is None:
+            logger.warning("Unknown component id in changes.json: %s — skipped", cid)
+            continue
+        if comp.type == ComponentType.TEXT:
+            text_labels.append(Label(
+                id=comp.id,
+                page=comp.page,
+                bbox=comp.bbox,
+                original_text=comp.text or "",
+                new_text=new_value,
+                fontname=comp.fontname or "helv",
+                fontsize=comp.fontsize or 10.0,
+                color=comp.color or "#000000",
+                flags=comp.flags or 0,
+                rotation=comp.rotation or 0,
+                origin=comp.origin,
+            ))
+        elif comp.type == ComponentType.BARCODE:
+            barcode_jobs.append((comp, new_value))
+        else:
+            logger.warning("Component %s type %s is not editable — skipped", cid, comp.type)
+
+    changed = 0
+    current_input = input_path
+
+    if text_labels:
+        changed += apply_labels(
+            input_path=current_input,
+            labels=text_labels,
+            output_path=output_path,
+            force=force,
+        )
+        current_input = output_path
+
+    for comp, new_value in barcode_jobs:
+        if not comp.barcode_format:
+            logger.warning("Barcode component %s has no barcode_format — skipped", comp.id)
+            continue
+        try:
+            fmt = BFmt(comp.barcode_format)
+        except ValueError:
+            logger.warning("Unknown barcode format %s for component %s — skipped", comp.barcode_format, comp.id)
+            continue
+        size_px: tuple[int, int] | None = None
+        if comp.width_px and comp.height_px:
+            size_px = (comp.width_px, comp.height_px)
+        else:
+            w_pt = comp.bbox[2] - comp.bbox[0]
+            h_pt = comp.bbox[3] - comp.bbox[1]
+            if w_pt > 0 and h_pt > 0:
+                size_px = (max(1, round(w_pt * 150 / 72)), max(1, round(h_pt * 150 / 72)))
+        apply_barcode_replacement(
+            input_path=current_input,
+            output_path=output_path,
+            page_num=comp.page,
+            bbox=comp.bbox,
+            value=new_value,
+            fmt=fmt,
+            size_px=size_px,
+        )
+        current_input = output_path
+        changed += 1
+
+    if not text_labels and not barcode_jobs:
+        shutil.copy2(input_path, output_path)
+
+    return changed
 
 
 def build_labels(
