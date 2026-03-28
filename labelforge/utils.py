@@ -175,6 +175,44 @@ def resolve_font(fontname: str, flags: int = 0) -> str:
     return family
 
 
+def extract_embedded_fonts(doc: fitz.Document) -> dict[str, bytes]:
+    """Extract all embedded font streams from a PDF/AI document.
+
+    Scans every page for font references, extracts their raw bytes via
+    ``doc.extract_font(xref)``, and returns a mapping from the stripped
+    lowercase font name to the font bytes.
+
+    This allows the apply step to reuse fonts already embedded in the source
+    document instead of falling back to system fonts or PyMuPDF built-ins.
+
+    Args:
+        doc: An open :class:`fitz.Document`.
+
+    Returns:
+        Dict mapping stripped-lowercase font name → raw font bytes.
+        Only entries where actual bytes were returned are included.
+    """
+    seen_xrefs: set[int] = set()
+    fonts: dict[str, bytes] = {}
+    for page in doc:
+        for xref, _ext, _type, name, _enc, _ref in page.get_fonts(full=True):
+            if xref == 0 or xref in seen_xrefs:
+                continue
+            seen_xrefs.add(xref)
+            try:
+                font_dict = doc.extract_font(xref)
+            except Exception:  # noqa: BLE001
+                continue
+            content = font_dict.get("content") if font_dict else None
+            if not content:
+                continue
+            key = strip_subset_prefix(name).lower()
+            if key and key not in fonts:
+                fonts[key] = content
+    logger.debug("Extracted %d embedded font(s) from document", len(fonts))
+    return fonts
+
+
 # ---------------------------------------------------------------------------
 # Color conversion
 # ---------------------------------------------------------------------------

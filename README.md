@@ -106,37 +106,49 @@ cd frontend && npm run dev
 
 ## CLI Usage
 
-### PDF Workflow
+### Recommended Workflow (components pipeline)
 
-#### Step 1 — Extract labels
+The components pipeline extracts all component types (text, images, barcodes, shapes) and embeds the source file path in the output — so `apply` needs no separate input file argument.
+
+```bash
+# 1. Extract all components
+labelforge components artwork.ai -o components.json
+
+# 2. Build a changes file (flat {component_id: new_value} map)
+#    Use generate_changes.py (for Mango order JSON) or edit manually.
+
+# 3. Apply
+labelforge apply --components components.json --changes changes.json -o output.pdf
+```
+
+---
+
+### Legacy Workflow (text-only, labels pipeline)
+
+Still supported but `analyze` is deprecated in favour of `components`.
+
+#### Step 1 — Extract text spans
 
 ```bash
 labelforge analyze invoice.pdf --output labels.json
 ```
 
-Produces a `labels.json` with every text span in the PDF.
+#### Step 2 — Edit labels.json
 
-#### Step 2 — Edit the JSON
-
-Open `labels.json` and set `new_text` on spans you want to change:
+Set `new_text` on spans you want to change:
 
 ```json
 {
   "id": "p0_b2_l1_s0",
-  "page": 0,
-  "bbox": [72.0, 680.5, 300.0, 694.5],
   "original_text": "ACME Corporation",
-  "new_text": "Globex Industries",
-  "fontname": "Helvetica-Bold",
-  "fontsize": 12.0,
-  "color": "#1a1a1a"
+  "new_text": "Globex Industries"
 }
 ```
 
-- Leave `new_text` as `null` to skip a label.
-- Set `new_text` to `""` to erase the span with no replacement.
+- Leave `new_text` as `null` to skip.
+- Set `new_text` to `""` to erase only.
 
-#### Step 3 — Apply edits
+#### Step 3 — Apply
 
 ```bash
 labelforge apply invoice.pdf labels.json --output invoice_edited.pdf
@@ -144,46 +156,28 @@ labelforge apply invoice.pdf labels.json --output invoice_edited.pdf
 
 ---
 
-### Adobe Illustrator (.ai) Workflow
-
-#### Extract labels from .ai
-
-```bash
-labelforge analyze design.ai --output labels.json
-```
-
-#### Output as PDF (recommended)
-
-```bash
-labelforge apply design.ai labels.json --output design_edited.pdf --force
-```
-
-#### Output as .ai
-
-```bash
-labelforge apply design.ai labels.json --output design_edited.ai --force
-```
-
----
-
 ### CLI Reference
 
-#### `labelforge analyze`
+#### `labelforge components` _(recommended)_
 
 ```
-Usage: labelforge analyze [OPTIONS] INPUT_FILE
+Usage: labelforge components [OPTIONS] INPUT_FILE
 
 Options:
-  --output FILE       Write labels JSON to FILE (default: print to stdout)
-  --pages TEXT        Page range, e.g. "1", "1-3", "1,3,5" (1-based)
-  --min-fontsize NUM  Exclude spans smaller than NUM pt (default: 0)
-  --no-warn           Suppress .ai compatibility warning
+  --output FILE         Destination JSON file (default: components.json)
+  --types LIST          Comma-separated: TEXT,IMAGE,BARCODE,SHAPE (default: all)
+  --pretty / --compact  Pretty-print or compact JSON (default: pretty)
+  --verbose             Enable debug logging
   --help
 ```
 
 #### `labelforge apply`
 
 ```
+# Components mode (recommended)
+Usage: labelforge apply [OPTIONS] --components FILE --changes FILE
+
+# Legacy mode
 Usage: labelforge apply [OPTIONS] INPUT_FILE LABELS_FILE
 
 Options:
@@ -192,6 +186,19 @@ Options:
   --white-out             Fill bounding box with white before inserting text
   --padding FLOAT         Inset the insertion rect by FLOAT pt on each side
   --max-scale-down FLOAT  Minimum font scale factor for auto-fit (0.0–1.0)
+  --help
+```
+
+#### `labelforge analyze` _(deprecated — use `components`)_
+
+```
+Usage: labelforge analyze [OPTIONS] INPUT_FILE
+
+Options:
+  --output FILE       Write labels JSON to FILE (default: stdout)
+  --pages TEXT        Page range, e.g. "1", "1-3", "1,3,5" (1-based)
+  --min-fontsize NUM  Exclude spans smaller than NUM pt (default: 0)
+  --no-warn           Suppress .ai compatibility warning
   --help
 ```
 
@@ -281,9 +288,13 @@ PyMuPDF uses a **top-left origin** (y=0 at top, increases downward). `get_text("
 
 ---
 
-## Font Fallback Strategy
+## Font Resolution Strategy
 
-When the original font is not a PyMuPDF built-in, LabelForge maps it to the closest available built-in:
+When inserting replacement text, LabelForge resolves the font in this order:
+
+1. **Embedded font from source document** — extracts the raw font bytes already embedded in the PDF/AI file and reuses them directly. This preserves the exact original typeface with no system font installation required.
+2. **System font file** — looks up the font name against a table of known paths on macOS (`/System/Library/Fonts/Supplemental/`) and Linux (`/usr/share/fonts/truetype/msttcorefonts/`). Covers Arial, Times New Roman, and Courier New variants.
+3. **PyMuPDF built-in** — maps the font name to the closest base-14 equivalent:
 
 | Condition | Built-in key | Name |
 |---|---|---|

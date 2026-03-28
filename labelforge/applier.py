@@ -15,9 +15,11 @@ from .utils import (
     AI_COMPAT_WARNING,
     clamp_rect_to_page,
     detect_file_type,
+    extract_embedded_fonts,
     hex_color_to_rgb_float,
     resolve_font,
     resolve_font_file,
+    strip_subset_prefix,
 )
 
 logger = logging.getLogger(__name__)
@@ -65,16 +67,33 @@ def _insert_htmlbox(
     rect: fitz.Rect,
     text: str,
     label: "Label",
+    embedded_fonts: dict[str, bytes] | None = None,
 ) -> None:
-    """Insert text using insert_textbox with system font file and dynamic
-    font-size shrink so text always fits within rect without overflowing.
+    """Insert text using insert_textbox with dynamic font-size shrink.
+
+    Font resolution order:
+    1. Embedded font extracted from the source document
+    2. System font file from the hardcoded path table
+    3. PyMuPDF built-in (Helvetica/Times/Courier family)
     """
     font_key = resolve_font(label.fontname, label.flags)
     font_file = resolve_font_file(label.fontname, label.flags)
     color = hex_color_to_rgb_float(label.color)
 
-    if font_file:
-        font_kwargs: dict = {"fontfile": font_file, "fontname": label.fontname}
+    embedded_bytes: bytes | None = None
+    if embedded_fonts:
+        lookup = strip_subset_prefix(label.fontname).lower()
+        embedded_bytes = embedded_fonts.get(lookup)
+
+    if embedded_bytes is not None:
+        font_kwargs: dict = {"fontbuffer": embedded_bytes, "fontname": label.fontname}
+        _tmp = fitz.Font(fontbuffer=embedded_bytes)
+        def _text_width(fs: float) -> float:
+            return _tmp.text_length(text, fontsize=fs)
+        def _orig_width(fs: float) -> float:
+            return _tmp.text_length(label.original_text, fontsize=fs)
+    elif font_file:
+        font_kwargs = {"fontfile": font_file, "fontname": label.fontname}
         _tmp = fitz.Font(fontfile=font_file)
         def _text_width(fs: float) -> float:
             return _tmp.text_length(text, fontsize=fs)
@@ -166,14 +185,30 @@ def _insert_textbox_fallback(
     rect: fitz.Rect,
     text: str,
     label: "Label",
+    embedded_fonts: dict[str, bytes] | None = None,
 ) -> None:
-    """Fallback: insert_textbox with dynamic font size shrink if needed."""
+    """Fallback: insert_textbox with dynamic font size shrink if needed.
+
+    Font resolution order:
+    1. Embedded font extracted from the source document
+    2. System font file from the hardcoded path table
+    3. PyMuPDF built-in (Helvetica/Times/Courier family)
+    """
     font_key = resolve_font(label.fontname, label.flags)
     font_file = resolve_font_file(label.fontname, label.flags)
     color = hex_color_to_rgb_float(label.color)
 
-    if font_file:
-        font_kwargs: dict = {"fontfile": font_file, "fontname": label.fontname}
+    embedded_bytes: bytes | None = None
+    if embedded_fonts:
+        lookup = strip_subset_prefix(label.fontname).lower()
+        embedded_bytes = embedded_fonts.get(lookup)
+
+    if embedded_bytes is not None:
+        font_kwargs: dict = {"fontbuffer": embedded_bytes, "fontname": label.fontname}
+        _tmp_font = fitz.Font(fontbuffer=embedded_bytes)
+        text_width = _tmp_font.text_length(text, fontsize=label.fontsize)
+    elif font_file:
+        font_kwargs = {"fontfile": font_file, "fontname": label.fontname}
         _tmp_font = fitz.Font(fontfile=font_file)
         text_width = _tmp_font.text_length(text, fontsize=label.fontsize)
     else:
@@ -288,6 +323,10 @@ def apply_labels(
 
     doc: fitz.Document = fitz.open(str(input_path))
     try:
+        embedded_fonts = extract_embedded_fonts(doc)
+        if embedded_fonts:
+            logger.info("Reusing %d embedded font(s) from source document", len(embedded_fonts))
+
         for page_num, page_labels in sorted(changed_by_page.items()):
             page: fitz.Page = doc[page_num]
             logger.debug("Processing page %d: %d changes", page_num, len(page_labels))
@@ -343,9 +382,9 @@ def apply_labels(
                     )
 
                 if label.auto_fit:
-                    _insert_htmlbox(page, rect, new_text, label)
+                    _insert_htmlbox(page, rect, new_text, label, embedded_fonts)
                 else:
-                    _insert_textbox_fallback(page, rect, new_text, label)
+                    _insert_textbox_fallback(page, rect, new_text, label, embedded_fonts)
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         doc.save(

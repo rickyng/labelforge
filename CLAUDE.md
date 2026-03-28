@@ -44,7 +44,7 @@ labelforge/
 │   ├── db.py                # SQLite init, migrations, queries
 │   ├── dependencies.py      # Auth, session store, require_role
 │   ├── schemas.py           # Pydantic request/response models
-│   ├── utils.py             # PDF helpers (extract, apply, temp dirs)
+│   ├── utils.py             # Temp session directory helpers only
 │   └── routers/
 │       ├── upload.py        # POST /api/upload
 │       ├── analyze.py       # POST /api/analyze
@@ -78,6 +78,15 @@ labelforge/
 │   ├── vite.config.ts       # Proxies /api/* to localhost:8000
 │   └── tailwind.config.js
 ├── labelforge/              # Core Python library (CLI + PDF engine)
+│   ├── cli.py               # Typer CLI: components, apply, analyze, replace, build, convert, inspect
+│   ├── applier.py           # redact-then-insert engine; apply_labels, apply_from_components
+│   ├── analyzer.py          # Text-span extraction (legacy analyze command)
+│   ├── document_analyzer.py # Multi-type component extraction (TEXT, IMAGE, BARCODE, SHAPE)
+│   ├── component_models.py  # Pydantic models: ComponentsFile, DocumentComponent
+│   ├── models.py            # Core Label Pydantic model
+│   ├── utils.py             # Font resolution, color helpers, extract_embedded_fonts
+│   └── barcode_handler.py   # Barcode decode/overlay via libzbar
+├── generate_changes.py      # Script: Mango order JSON + components.json → per-size changes.json
 ├── Dockerfile
 ├── docker-compose.yml
 └── CLAUDE.md
@@ -201,8 +210,9 @@ No `.env` file required for development. For production:
 ### Add a new label field
 1. Add the field to the `Label` interface in `frontend/src/types.ts`
 2. Update the Pydantic model in `backend/schemas.py`
-3. Update extraction logic in `backend/utils.py`
-4. Update `AdminOverlay.tsx` and/or `LabelTable.tsx` to display it
+3. Update the core `Label` model in `labelforge/models.py`
+4. Update extraction logic in `labelforge/analyzer.py` (text spans) and/or `labelforge/document_analyzer.py` (components)
+5. Update `AdminOverlay.tsx` and/or `LabelTable.tsx` to display it
 
 ### Add a new page
 1. Create `frontend/src/pages/YourPage.tsx`
