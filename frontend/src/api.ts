@@ -1,4 +1,4 @@
-import type { AnalyzeResponse, ApplyResponse, AuthResponse, ConfigSummary, Label, LoadUserLabelResponse, UploadResponse, UserLabelSummary } from './types'
+import type { AnalyzeResponse, ApplyResponse, AuthResponse, ComponentsResponse, ConfigSummary, Label, LoadUserLabelResponse, ReplaceBarcodeResponse, UploadResponse, UserLabelSummary } from './types'
 
 const BASE = '/api'
 
@@ -130,8 +130,35 @@ export async function deleteUserLabel(name: string): Promise<void> {
   return handleResponse<void>(res)
 }
 
+export async function analyzeComponents(sessionId: string): Promise<ComponentsResponse> {
+  const res = await fetch(`${BASE}/components/${sessionId}`, {
+    method: 'POST',
+    credentials: 'include',
+  })
+  return handleResponse<ComponentsResponse>(res)
+}
+
+export async function replaceBarcode(
+  sessionId: string,
+  componentId: string,
+  value: string,
+  fmt: string,
+): Promise<ReplaceBarcodeResponse> {
+  const res = await fetch(`${BASE}/components/${sessionId}/${encodeURIComponent(componentId)}/replace-barcode`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ value, fmt }),
+  })
+  return handleResponse<ReplaceBarcodeResponse>(res)
+}
+
 export function previewUrl(sessionId: string): string {
   return `${BASE}/preview/${sessionId}`
+}
+
+export function outputPreviewUrl(sessionId: string): string {
+  return `${BASE}/output-preview/${sessionId}`
 }
 
 export function downloadUrl(sessionId: string): string {

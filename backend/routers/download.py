@@ -25,6 +25,25 @@ def preview_file(session_id: str) -> FileResponse:
     )
 
 
+@router.get("/output-preview/{session_id}")
+def output_preview_file(session_id: str) -> FileResponse:
+    """Stream the current output file (after apply/barcode replace) for preview."""
+    session: SessionData = get_session(session_id)
+    path = (
+        session.output_path
+        if session.output_path and session.output_path.exists()
+        else session.input_path
+    )
+    if not path or not path.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found.")
+    return FileResponse(
+        path=str(path),
+        media_type="application/pdf",
+        filename=path.name,
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+    )
+
+
 @router.get("/download/{session_id}")
 def download_file(session_id: str) -> FileResponse:
     """Stream the processed output file for download."""

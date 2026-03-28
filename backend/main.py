@@ -18,7 +18,7 @@ from fastapi.responses import FileResponse
 
 from .dependencies import verify_credentials
 from .db import init_db
-from .routers import analyze, apply, configs, download, editable, upload, user_labels
+from .routers import analyze, apply, configs, components, download, editable, upload, user_labels
 from .schemas import AuthRequest, AuthResponse
 from .utils import cleanup_all
 
@@ -62,6 +62,7 @@ app.include_router(download.router, prefix="/api", tags=["download"])
 app.include_router(editable.router, prefix="/api", tags=["editable"])
 app.include_router(configs.router, prefix="/api", tags=["configs"])
 app.include_router(user_labels.router, prefix="/api", tags=["user_labels"])
+app.include_router(components.router, prefix="/api", tags=["components"])
 
 
 @app.post("/api/auth/login", response_model=AuthResponse)

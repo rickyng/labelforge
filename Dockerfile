@@ -14,6 +14,11 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libzbar0 \
+  && rm -rf /var/lib/apt/lists/*
+
 # Install Python deps first (layer cache)
 COPY pyproject.toml ./
 COPY labelforge/ ./labelforge/

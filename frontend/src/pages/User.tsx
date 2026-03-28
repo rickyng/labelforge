@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  applyLabels, deleteUserLabel, downloadUrl, listConfigs, listUserLabels,
-  loadConfig, loadUserLabel, logout, previewUrl, saveUserLabel,
+  analyzeComponents, applyLabels, deleteUserLabel, downloadUrl, listConfigs, listUserLabels,
+  loadConfig, loadUserLabel, logout, outputPreviewUrl, previewUrl, replaceBarcode, saveUserLabel,
 } from '../api'
 import { AdminOverlay } from '../components/AdminOverlay'
 import { ZoomControls } from '../components/ZoomControls'
@@ -10,7 +10,7 @@ import { PdfViewer } from '../components/PdfViewer'
 import { useToast } from '../components/Toast'
 import { UserForm } from '../components/UserForm'
 import { useLabels } from '../context/LabelsContext'
-import type { ConfigSummary, UserLabelSummary } from '../types'
+import type { ConfigSummary, DocumentComponent, UserLabelSummary } from '../types'
 import { TagIcon } from '../components/TagIcon'
 import { getRole } from '../utils/auth'
 
@@ -38,6 +38,7 @@ export default function User() {
   const [saving, setSaving] = useState(false)
   const [canvasSize, setCanvasSize] = useState({ w: 800, h: 1000, scale: 1 })
   const [zoom, setZoom] = useState(1)
+  const [components, setComponents] = useState<DocumentComponent[]>([])
   const [previewing, setPreviewing] = useState(false)
   const [previewMode, setPreviewMode] = useState(false)
   const [previewKey, setPreviewKey] = useState(0)
@@ -78,6 +79,15 @@ export default function User() {
     await loadProfiles()
   }
 
+  async function fetchComponents(sid: string) {
+    try {
+      const res = await analyzeComponents(sid)
+      setComponents(res.components)
+    } catch {
+      // non-critical
+    }
+  }
+
   async function openExistingEditor(ul: UserLabelSummary) {
     try {
       const res = await loadUserLabel(ul.name)
@@ -91,6 +101,7 @@ export default function User() {
       setLabelName(ul.name)
       setSelectedProfile(ul.profile_name)
       await loadProfiles()
+      fetchComponents(res.session_id)
     } catch (err) {
       addToast(err instanceof Error ? err.message : 'An error occurred', 'error')
     }
@@ -109,6 +120,7 @@ export default function User() {
       setCurrentPage(0)
       loadEditableIds(res.editable_ids)
       setIsDone(false)
+      fetchComponents(res.session_id)
     } catch (err) {
       addToast(err instanceof Error ? err.message : 'An error occurred', 'error')
     } finally {
@@ -143,6 +155,44 @@ export default function User() {
     try {
       const toApply = editableLabels.filter((l) => l.new_text !== null)
       await applyLabels(sessionId, toApply, 'pdf')
+
+      // Auto-link: replace any barcode whose value matches a changed label's original_text
+      const changed = toApply.filter((l) => l.new_text !== null && l.new_text !== l.original_text)
+      const barcodeComponents = components.filter((c) => c.type === 'BARCODE')
+      console.log('[barcode-link] changed labels:', changed.map(l => ({ id: l.id, page: l.page, orig: l.original_text, new: l.new_text })))
+      console.log('[barcode-link] barcode components:', barcodeComponents.map(c => ({ id: c.id, page: c.page, value: c.barcode_value, fmt: c.barcode_format })))
+      // Helper: distance between two bbox centers
+      const bboxDist = (a: [number,number,number,number], b: [number,number,number,number]) => {
+        const ax = (a[0] + a[2]) / 2, ay = (a[1] + a[3]) / 2
+        const bx = (b[0] + b[2]) / 2, by = (b[1] + b[3]) / 2
+        return Math.hypot(ax - bx, ay - by)
+      }
+
+      for (const lbl of changed) {
+        // Only attempt barcode auto-link for labels that look like barcode values (digits/alphanumeric, not plain sentences)
+        const looksLikeBarcode = /^[A-Z0-9$%*.+/-]{4,}$/i.test(lbl.original_text.trim())
+        if (!looksLikeBarcode) continue
+        // First try exact value match, then fall back to nearest barcode on same page
+        const samePage = barcodeComponents.filter((c) => c.page === lbl.page && c.barcode_format != null)
+        const match =
+          samePage.find((c) => c.barcode_value === lbl.original_text) ??
+          (samePage.length > 0
+            ? samePage.reduce((best, c) => bboxDist(c.bbox, lbl.bbox) < bboxDist(best.bbox, lbl.bbox) ? c : best)
+            : undefined)
+        if (match && match.barcode_format) {
+          try {
+            await replaceBarcode(sessionId, match.id, lbl.new_text!, match.barcode_format)
+            addToast(`Barcode auto-updated for "${lbl.original_text}"`, 'success')
+          } catch (bErr) {
+            addToast(`Barcode update failed: ${bErr instanceof Error ? bErr.message : 'Unknown error'}`, 'error')
+          }
+        }
+      }
+      if (changed.length > 0) {
+        // Refresh component state so subsequent applies use updated barcode values
+        fetchComponents(sessionId)
+      }
+
       setIsDone(true)
       setPreviewKey((k) => k + 1)
     } catch (err) {
@@ -150,7 +200,7 @@ export default function User() {
     } finally {
       setPreviewing(false)
     }
-  }, [sessionId, editableLabels, addToast, setIsDone])
+  }, [sessionId, editableLabels, components, addToast, setIsDone])
 
   const handlePreview = useCallback(async () => {
     await refreshPreview()
@@ -379,7 +429,7 @@ export default function User() {
               previewMode ? (
                 <div className='flex-1 overflow-auto p-2'>
                   <PdfViewer
-                    url={`${downloadUrl(sessionId)}?v=${previewKey}`}
+                    url={`${outputPreviewUrl(sessionId)}?v=${previewKey}`}
                     page={currentPage}
                     zoom={zoom}
                     onDimensions={handleDimensions}

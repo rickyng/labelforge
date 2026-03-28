@@ -13,12 +13,19 @@ from fastapi import Cookie, HTTPException, status
 @dataclass
 class SessionData:
     session_id: str
-    input_path: Path
-    file_type: str  # "pdf" or "ai"
+    input_path: Path        # original upload — never mutated
+    file_type: str          # "pdf" or "ai"
     tmp_dir: Path
-    output_path: Path | None = None
+    output_path: Path | None = None   # latest processed output
     labels_json_path: Path | None = None
     extra: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def working_path(self) -> Path:
+        """The file to use as input for the next processing step."""
+        if self.output_path and self.output_path.exists():
+            return self.output_path
+        return self.input_path
 
 
 # In-memory session store: sid -> SessionData

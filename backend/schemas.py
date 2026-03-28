@@ -88,3 +88,43 @@ class AuthRequest(BaseModel):
 class AuthResponse(BaseModel):
     role: Literal["admin", "user"]
     username: str
+
+
+# --- Component extraction schemas ---
+
+class ComponentDTO(BaseModel):
+    """Wire representation of a DocumentComponent."""
+
+    id: str
+    type: str                                    # ComponentType value string
+    page: int
+    bbox: list[float] = Field(..., min_length=4, max_length=4)
+    xref: int | None = None
+    text: str | None = None
+    fontname: str | None = None
+    fontsize: float | None = None
+    color: str | None = None
+    image_format: str | None = None
+    width_px: int | None = None
+    height_px: int | None = None
+    thumbnail_b64: str | None = None
+    barcode_value: str | None = None
+    barcode_format: str | None = None           # BarcodeFormat value string
+    editable: bool = True
+
+
+class ComponentsResponse(BaseModel):
+    session_id: str
+    components: list[ComponentDTO]
+    page_count: int
+
+
+class ReplaceBarcodeRequest(BaseModel):
+    value: str
+    fmt: str                                     # BarcodeFormat value string
+
+
+class ReplaceBarcodeResponse(BaseModel):
+    session_id: str
+    component_id: str
+    output_filename: str

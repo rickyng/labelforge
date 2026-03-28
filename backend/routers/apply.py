@@ -38,7 +38,7 @@ def apply_session(session_id: str, body: ApplyRequest) -> ApplyResponse:
 
     try:
         changed_count = apply_labels(
-            input_path=session.input_path,
+            input_path=session.working_path,
             labels=labels,
             output_path=output_path,
             backup=False,

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { analyzeSession, deleteConfig, listConfigs, loadConfig, logout, previewUrl, saveEditableConfig, uploadFile } from '../api'
-import type { ConfigSummary } from '../types'
+import { analyzeComponents, analyzeSession, deleteConfig, listConfigs, loadConfig, logout, previewUrl, saveEditableConfig, uploadFile } from '../api'
+import type { ConfigSummary, DocumentComponent } from '../types'
 import { AdminOverlay } from '../components/AdminOverlay'
 import { ZoomControls } from '../components/ZoomControls'
 import { LabelTable } from '../components/LabelTable'
@@ -32,6 +32,7 @@ export default function Admin() {
   const [showUpload, setShowUpload] = useState(false)
   const [filename, setFilename] = useState('')
   const [profileName, setProfileName] = useState('')
+  const [components, setComponents] = useState<DocumentComponent[]>([])
 
   // Guard: redirect if not admin
   useEffect(() => {
@@ -72,6 +73,7 @@ export default function Admin() {
         if (res.warning) addToast(res.warning, 'warning')
         addToast(`Extracted ${res.labels.length} label(s)`, 'success')
         setShowUpload(false)
+        fetchComponents(res.session_id)
       } catch (err) {
         addToast(err instanceof Error ? err.message : 'An error occurred', 'error')
       } finally {
@@ -92,6 +94,7 @@ export default function Admin() {
       loadEditableIds(res.editable_ids)
       setFilename(cfg.filename)
       setProfileName(cfg.name || cfg.filename)
+      fetchComponents(res.session_id)
     } catch (err) {
       addToast(err instanceof Error ? err.message : 'An error occurred', 'error')
     }
@@ -125,6 +128,15 @@ export default function Admin() {
       setSavingConfig(false)
     }
   }, [sessionId, editableSet, profileName, addToast, refreshProfiles])
+
+  async function fetchComponents(sid: string) {
+    try {
+      const res = await analyzeComponents(sid)
+      setComponents(res.components)
+    } catch {
+      // non-critical — overlay simply won't show components
+    }
+  }
 
   const handleDimensions = useCallback(
     (w: number, h: number, scale: number) => setCanvasSize({ w, h, scale }),
@@ -185,6 +197,7 @@ export default function Admin() {
               canvasHeight={canvasSize.h}
               pdfScale={canvasSize.scale}
               currentPage={currentPage}
+              components={components}
             />
           }
         />
@@ -279,6 +292,7 @@ export default function Admin() {
           <>
             {pdfPanel}
             <div className="w-96 shrink-0 border-l border-gray-200 bg-white flex flex-col overflow-hidden">
+              {/* Header */}
               <div className="px-4 py-3 border-b border-gray-200 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-semibold text-gray-900 truncate">{profileName || filename}</span>
@@ -310,6 +324,7 @@ export default function Admin() {
                   {savingConfig ? 'Saving…' : 'Save Profile'}
                 </button>
               </div>
+
               <div className="flex-1 overflow-y-auto p-3">
                 <LabelTable />
               </div>

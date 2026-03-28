@@ -59,6 +59,41 @@ export interface LoadUserLabelResponse extends AnalyzeResponse {
   profile_name: string
 }
 
+export type ComponentType = 'TEXT' | 'IMAGE' | 'BARCODE' | 'SHAPE'
+
+export type BarcodeFormat = 'ean13' | 'ean8' | 'code128' | 'code39' | 'qr' | 'upca'
+
+export interface DocumentComponent {
+  id: string
+  type: ComponentType
+  page: number
+  bbox: [number, number, number, number]
+  xref: number | null
+  text: string | null
+  fontname: string | null
+  fontsize: number | null
+  color: string | null
+  image_format: string | null
+  width_px: number | null
+  height_px: number | null
+  thumbnail_b64: string | null
+  barcode_value: string | null
+  barcode_format: BarcodeFormat | null
+  editable: boolean
+}
+
+export interface ComponentsResponse {
+  session_id: string
+  components: DocumentComponent[]
+  page_count: number
+}
+
+export interface ReplaceBarcodeResponse {
+  session_id: string
+  component_id: string
+  output_filename: string
+}
+
 export type Role = 'admin' | 'user'
 
 export interface AuthResponse {

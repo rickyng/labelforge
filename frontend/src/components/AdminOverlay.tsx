@@ -1,15 +1,23 @@
 import React from 'react'
 import { Group, Label, Layer, Rect, Stage, Tag, Text } from 'react-konva'
 import { useLabels } from '../context/LabelsContext'
+import type { DocumentComponent } from '../types'
+
+const COMPONENT_STYLE: Record<string, { stroke: string; fill: string; strokeWidth: number }> = {
+  IMAGE:   { stroke: '#a855f7', fill: 'rgba(168,85,247,0.12)',  strokeWidth: 1 },
+  BARCODE: { stroke: '#22c55e', fill: 'rgba(34,197,94,0.15)',   strokeWidth: 1.5 },
+  SHAPE:   { stroke: '#9ca3af', fill: 'rgba(156,163,175,0.07)', strokeWidth: 1 },
+}
 
 interface AdminOverlayProps {
   canvasWidth: number
   canvasHeight: number
   pdfScale: number
   currentPage: number
+  components?: DocumentComponent[]
 }
 
-export function AdminOverlay({ canvasWidth, canvasHeight, pdfScale, currentPage }: AdminOverlayProps) {
+export function AdminOverlay({ canvasWidth, canvasHeight, pdfScale, currentPage, components = [] }: AdminOverlayProps) {
   const {
     labels,
     updateLabel,
@@ -21,6 +29,9 @@ export function AdminOverlay({ canvasWidth, canvasHeight, pdfScale, currentPage 
   } = useLabels()
 
   const pageLabels = labels.filter((l) => l.page === currentPage)
+  const pageComponents = components.filter(
+    (c) => c.page === currentPage && c.type !== 'TEXT'
+  )
 
   return (
     <Stage
@@ -28,6 +39,28 @@ export function AdminOverlay({ canvasWidth, canvasHeight, pdfScale, currentPage 
       height={canvasHeight}
       style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'all' }}
     >
+      {/* Component type overlay — rendered below labels layer */}
+      <Layer listening={false}>
+        {pageComponents.map((c) => {
+          const [x0, y0, x1, y1] = c.bbox
+          const style = COMPONENT_STYLE[c.type]
+          if (!style) return null
+          return (
+            <Rect
+              key={c.id}
+              x={x0 * pdfScale}
+              y={y0 * pdfScale}
+              width={Math.max((x1 - x0) * pdfScale, 8)}
+              height={Math.max((y1 - y0) * pdfScale, 8)}
+              stroke={style.stroke}
+              strokeWidth={style.strokeWidth}
+              fill={style.fill}
+              cornerRadius={2}
+              listening={false}
+            />
+          )
+        })}
+      </Layer>
       <Layer>
         {pageLabels.map((lbl) => {
           const [x0, y0, x1, y1] = lbl.bbox
