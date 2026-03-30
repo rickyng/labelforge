@@ -227,12 +227,14 @@ labelforge convert INPUT_FILE [options]
 
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
+| `--to FORMAT` | | `pdf` | Output format. Only `pdf` is supported currently |
 | `--output PATH` | `-o` | `<input>.pdf` | Destination PDF file |
+| `--force` | `-f` | off | Overwrite output if it already exists |
 | `--verbose` | `-v` | off | Enable debug logging |
 
 **Example:**
 ```bash
-labelforge convert artwork.ai -o artwork.pdf
+labelforge convert artwork.ai -o artwork.pdf --force
 ```
 
 ---
@@ -253,6 +255,61 @@ labelforge inspect LABELS_JSON [options]
 ```bash
 labelforge inspect labels.json --changed-only
 ```
+
+---
+
+## Helper Scripts
+
+### `generate_changes.py`
+
+Generates per-size `changes.json` files from a Mango label order JSON and a `components.json`.
+Useful for batch label production where one order produces many size variants.
+
+```bash
+python generate_changes.py \
+    --order   4500801837-00000017-205456MK26.json \
+    --components check_components.json \
+    --out-dir changes/
+```
+
+Outputs one `changes.json` per size entry found in the order, e.g.:
+```
+changes/205456MK26_01_XXS.json
+changes/205456MK26_01_XS.json
+changes/205456MK26_01_S.json
+...
+```
+
+Each file is a flat `{component_id: new_value}` dict ready for `labelforge apply`:
+
+```bash
+labelforge apply \
+    --components check_components.json \
+    --changes changes/205456MK26_01_XXS.json \
+    --output out/label_XXS.pdf
+```
+
+| Option | Short | Default | Description |
+|--------|-------|---------|-------------|
+| `--order PATH` | | required | Mango order JSON file |
+| `--components PATH` | | required | `components.json` from `labelforge components` |
+| `--out-dir DIR` | | `changes/` | Directory to write per-size output files |
+| `--verbose` | `-v` | off | Print detected roles and per-size change maps |
+
+**Field roles auto-detected from component text:**
+
+| Role | Pattern matched |
+|---|---|
+| `EAN13` | 13-digit barcode string |
+| `SIZE` | XXS / XS / S / M / L / XL / XXL / XXXL / numeric |
+| `UNITS` | 1–5 digit integer |
+| `REF` | Starts with `REF:` or `REF ` |
+| `COLOR_CODE` | Starts with `C:` or `C ` followed by digits |
+| `ORIGIN` | Starts with `Made in` |
+| `PO_ID` | 10-digit integer |
+| `STYLE_ID` | 6–12 char alphanumeric |
+| `SEASON` | SS or AW followed by 4-digit year |
+| `ICONIC` | Literal `iconic` |
 
 ---
 

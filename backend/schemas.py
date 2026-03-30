@@ -41,6 +41,7 @@ class AnalyzeResponse(BaseModel):
     file_type: str
     editable_ids: list[str] = []
     warning: str | None = None
+    changes_data: dict | None = None
 
 
 class ApplyRequest(BaseModel):
@@ -62,6 +63,7 @@ class ConfigSummary(BaseModel):
     page_count: int
     file_type: str
     updated_at: str
+    has_changes: bool = False
 
 
 class UserLabelSummary(BaseModel):
@@ -128,3 +130,42 @@ class ReplaceBarcodeResponse(BaseModel):
     session_id: str
     component_id: str
     output_filename: str
+
+
+class SizeChanges(BaseModel):
+    size_name: str
+    changes: dict[str, str]  # component_id -> new_value
+
+
+class ChangesData(BaseModel):
+    source_file: str
+    style_id: str
+    color_code: str
+    generated_at: str
+    sizes: list[SizeChanges]
+
+
+class ProfileApplyResponse(BaseModel):
+    session_id: str
+    size_name: str
+    changed_count: int
+    output_filename: str
+    warning: str | None = None
+
+
+class FieldEntry(BaseModel):
+    num: str
+    field: str
+    path: str
+    value: str
+    label_id: str = ""
+
+
+class ImportJsonResponse(BaseModel):
+    session_id: str
+    source_file: str
+    style_id: str
+    color_code: str
+    sizes: list[str]
+    changes_by_size: dict[str, dict[str, str]] = {}  # {size_name: {component_id: new_value}}
+    fields_by_size: dict[str, list[FieldEntry]] = {}  # {size_name: [{num, field, path, value}]}

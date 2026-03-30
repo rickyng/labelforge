@@ -40,6 +40,7 @@ export interface ApplyResponse {
 }
 
 export interface ConfigSummary {
+  has_changes: boolean;
   filename: string
   name: string
   editable_count: number
@@ -94,6 +95,14 @@ export interface ReplaceBarcodeResponse {
   output_filename: string
 }
 
+export interface ProfileApplyResponse {
+  session_id: string
+  size_name: string
+  changed_count: number
+  output_filename: string
+  warning?: string | null
+}
+
 export type Role = 'admin' | 'user'
 
 export interface AuthResponse {
@@ -108,4 +117,22 @@ export interface Toast {
   type: ToastType
   message: string
   leaving?: boolean
+}
+
+export interface FieldEntry {
+  num: string
+  field: string
+  path: string
+  value: string
+  label_id: string
+}
+
+export interface ImportJsonResponse {
+  session_id: string
+  source_file: string
+  style_id: string
+  color_code: string
+  sizes: string[]
+  changes_by_size: Record<string, Record<string, string>>
+  fields_by_size: Record<string, FieldEntry[]>
 }

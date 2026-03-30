@@ -1,4 +1,4 @@
-import type { AnalyzeResponse, ApplyResponse, AuthResponse, ComponentsResponse, ConfigSummary, Label, LoadUserLabelResponse, ReplaceBarcodeResponse, UploadResponse, UserLabelSummary } from './types'
+import type { AnalyzeResponse, ApplyResponse, AuthResponse, ComponentsResponse, ConfigSummary, ImportJsonResponse, Label, LoadUserLabelResponse, ProfileApplyResponse, ReplaceBarcodeResponse, UploadResponse, UserLabelSummary } from './types'
 
 const BASE = '/api'
 
@@ -153,6 +153,17 @@ export async function replaceBarcode(
   return handleResponse<ReplaceBarcodeResponse>(res)
 }
 
+export async function applyProfile(
+  name: string,
+  sizeName: string,
+): Promise<ProfileApplyResponse> {
+  const res = await fetch(
+    `${BASE}/configs/${encodeURIComponent(name)}/apply?size_name=${encodeURIComponent(sizeName)}`,
+    { method: 'POST', credentials: 'include' },
+  )
+  return handleResponse<ProfileApplyResponse>(res)
+}
+
 export function previewUrl(sessionId: string): string {
   return `${BASE}/preview/${sessionId}`
 }
@@ -163,4 +174,18 @@ export function outputPreviewUrl(sessionId: string): string {
 
 export function downloadUrl(sessionId: string): string {
   return `${BASE}/download/${sessionId}`
+}
+
+export async function importJson(
+  sessionId: string,
+  file: File,
+): Promise<ImportJsonResponse> {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await fetch(`${BASE}/import-json/${sessionId}`, {
+    method: 'POST',
+    credentials: 'include',
+    body: form,
+  })
+  return handleResponse<ImportJsonResponse>(res)
 }

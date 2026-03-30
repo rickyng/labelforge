@@ -68,6 +68,7 @@ def _insert_htmlbox(
     text: str,
     label: "Label",
     embedded_fonts: dict[str, bytes] | None = None,
+    font_warnings: list[str] | None = None,
 ) -> None:
     """Insert text using insert_textbox with dynamic font-size shrink.
 
@@ -80,19 +81,18 @@ def _insert_htmlbox(
     font_file = resolve_font_file(label.fontname, label.flags)
     color = hex_color_to_rgb_float(label.color)
 
-    embedded_bytes: bytes | None = None
-    if embedded_fonts:
+    # Never use subset-embedded fonts for replacement text: PDF subset fonts use
+    # custom internal encodings that only work correctly for the original glyphs.
+    # New text must always use a full system font or built-in fallback.
+    if font_warnings is not None and embedded_fonts:
         lookup = strip_subset_prefix(label.fontname).lower()
-        embedded_bytes = embedded_fonts.get(lookup)
+        if embedded_fonts.get(lookup):
+            font_warnings.append(
+                f"Label '{label.id}': using system font instead of embedded subset "
+                f"'{label.fontname}' to ensure correct character rendering."
+            )
 
-    if embedded_bytes is not None:
-        font_kwargs: dict = {"fontbuffer": embedded_bytes, "fontname": label.fontname}
-        _tmp = fitz.Font(fontbuffer=embedded_bytes)
-        def _text_width(fs: float) -> float:
-            return _tmp.text_length(text, fontsize=fs)
-        def _orig_width(fs: float) -> float:
-            return _tmp.text_length(label.original_text, fontsize=fs)
-    elif font_file:
+    if font_file:
         font_kwargs = {"fontfile": font_file, "fontname": label.fontname}
         _tmp = fitz.Font(fontfile=font_file)
         def _text_width(fs: float) -> float:
@@ -262,6 +262,7 @@ def apply_labels(
     output_path: Path,
     backup: bool = False,
     force: bool = False,
+    font_warnings: list[str] | None = None,
 ) -> int:
     """Apply edited labels to a PDF and save the result.
 
@@ -382,7 +383,7 @@ def apply_labels(
                     )
 
                 if label.auto_fit:
-                    _insert_htmlbox(page, rect, new_text, label, embedded_fonts)
+                    _insert_htmlbox(page, rect, new_text, label, embedded_fonts, font_warnings)
                 else:
                     _insert_textbox_fallback(page, rect, new_text, label, embedded_fonts)
 
@@ -405,6 +406,7 @@ def apply_from_components(
     changes_path: Path,
     output_path: Path,
     force: bool = False,
+    font_warnings: list[str] | None = None,
 ) -> int:
     """Apply changes to a document using components.json + changes.json.
 
@@ -416,6 +418,7 @@ def apply_from_components(
         changes_path: Path to changes.json — a ``{component_id: new_value}`` map.
         output_path: Destination path for the modified PDF.
         force: If True, overwrite ``output_path`` if it already exists.
+        font_warnings: Optional list to collect font substitution warnings.
 
     Returns:
         Number of components actually changed.
@@ -472,6 +475,7 @@ def apply_from_components(
             labels=text_labels,
             output_path=output_path,
             force=force,
+            font_warnings=font_warnings,
         )
         current_input = output_path
 

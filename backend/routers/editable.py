@@ -49,6 +49,9 @@ async def save_editable(
             for lbl in labels
         ]
         file_blob = session.input_path.read_bytes()
+        changes_data = session.extra.get("changes_data")
+        input_json_raw = session.extra.get("input_json_raw")
+        changes_json = json.dumps(changes_data) if changes_data is not None else None
         save_config(
             name=body.name,
             filename=filename,
@@ -57,5 +60,7 @@ async def save_editable(
             file_blob=file_blob,
             page_count=page_count,
             file_type=session.file_type,
+            input_json=input_json_raw,
+            changes_json=changes_json,
         )
     return {"saved": len(body.editable_ids)}

@@ -1,26 +1,31 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { analyzeComponents, analyzeSession, deleteConfig, listConfigs, loadConfig, logout, previewUrl, saveEditableConfig, uploadFile } from '../api'
-import type { ConfigSummary, DocumentComponent } from '../types'
+import { analyzeComponents, analyzeSession, deleteConfig, importJson, listConfigs, loadConfig, logout, previewUrl, saveEditableConfig, uploadFile } from '../api'
+import type { ConfigSummary, DocumentComponent, ImportJsonResponse } from '../types'
 import { AdminOverlay } from '../components/AdminOverlay'
 import { ZoomControls } from '../components/ZoomControls'
 import { LabelTable } from '../components/LabelTable'
 import { PdfViewer } from '../components/PdfViewer'
 import { useToast } from '../components/Toast'
 import { UploadZone } from '../components/UploadZone'
+import { JsonUploadZone } from '../components/JsonUploadZone'
 import { useLabels } from '../context/LabelsContext'
 import { TagIcon } from '../components/TagIcon'
+import { ResizablePanel } from '../components/ResizablePanel'
 import { getRole } from '../utils/auth'
 
 export default function Admin() {
   const navigate = useNavigate()
   const { addToast } = useToast()
   const {
-    setLabels, sessionId, setSessionId,
+    labels, setLabels, updateLabel, sessionId, setSessionId,
     pageCount, setPageCount, currentPage, setCurrentPage,
     editableSet,
     loadEditableIds,
   } = useLabels()
+
+  const labelsRef = useRef(labels)
+  useEffect(() => { labelsRef.current = labels }, [labels])
 
   const [uploading, setUploading] = useState(false)
   const [analyzing, setAnalyzing] = useState(false)
@@ -33,6 +38,9 @@ export default function Admin() {
   const [filename, setFilename] = useState('')
   const [profileName, setProfileName] = useState('')
   const [components, setComponents] = useState<DocumentComponent[]>([])
+  const [jsonImportLoading, setJsonImportLoading] = useState(false)
+  const [jsonImportResult, setJsonImportResult] = useState<ImportJsonResponse | null>(null)
+  const [selectedImportSize, setSelectedImportSize] = useState<string>('')
 
   // Guard: redirect if not admin
   useEffect(() => {
@@ -94,6 +102,8 @@ export default function Admin() {
       loadEditableIds(res.editable_ids)
       setFilename(cfg.filename)
       setProfileName(cfg.name || cfg.filename)
+      setJsonImportResult(null)
+      setSelectedImportSize('')
       fetchComponents(res.session_id)
     } catch (err) {
       addToast(err instanceof Error ? err.message : 'An error occurred', 'error')
@@ -138,6 +148,38 @@ export default function Admin() {
     }
   }
 
+  // Auto-select first size when JSON is imported
+  useEffect(() => {
+    if (jsonImportResult?.sizes?.length) {
+      setSelectedImportSize(jsonImportResult.sizes[0])
+    }
+  }, [jsonImportResult])
+
+  // Auto-populate editableSet and new_text when selected size changes
+  useEffect(() => {
+    if (!selectedImportSize || !jsonImportResult) return
+    const changes = jsonImportResult.changes_by_size[selectedImportSize] ?? {}
+    loadEditableIds(Object.keys(changes))
+    labelsRef.current.forEach(lbl => {
+      const val = changes[lbl.id]
+      updateLabel(lbl.id, { new_text: val !== undefined ? val : null })
+    })
+  }, [selectedImportSize, jsonImportResult, loadEditableIds, updateLabel])
+
+  const handleJsonFile = useCallback(async (file: File) => {
+    if (!sessionId) return
+    setJsonImportLoading(true)
+    try {
+      const res = await importJson(sessionId, file)
+      setJsonImportResult(res)
+      addToast(`Imported ${res.sizes.length} size(s) from ${res.source_file}`, 'success')
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Import failed', 'error')
+    } finally {
+      setJsonImportLoading(false)
+    }
+  }, [sessionId, addToast])
+
   const handleDimensions = useCallback(
     (w: number, h: number, scale: number) => setCanvasSize({ w, h, scale }),
     [],
@@ -153,6 +195,8 @@ export default function Admin() {
     setLabels([])
     setFilename('')
     setProfileName('')
+    setJsonImportResult(null)
+    setSelectedImportSize('')
     refreshProfiles()
   }
 
@@ -222,7 +266,7 @@ export default function Admin() {
       <div className="flex flex-1 overflow-hidden">
 
         {/* LEFT: Profiles sidebar */}
-        <div className="w-80 shrink-0 border-r border-gray-200 bg-white flex flex-col overflow-hidden">
+        <ResizablePanel defaultWidth={320} minWidth={200} maxWidth={560} className="border-r border-gray-200 bg-white flex flex-col overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
             <h2 className="font-semibold text-gray-900 text-sm">Profiles</h2>
             <button
@@ -285,13 +329,13 @@ export default function Admin() {
               )}
             </div>
           </div>
-        </div>
+        </ResizablePanel>
 
         {/* RIGHT: PDF preview + label editor (shown when a profile is loaded) */}
         {hasSession && (
           <>
             {pdfPanel}
-            <div className="w-96 shrink-0 border-l border-gray-200 bg-white flex flex-col overflow-hidden">
+            <ResizablePanel defaultWidth={600} minWidth={280} maxWidth={720} side="right" className="border-l border-gray-200 bg-white flex flex-col overflow-hidden">
               {/* Header */}
               <div className="px-4 py-3 border-b border-gray-200 space-y-2">
                 <div className="flex items-center justify-between">
@@ -325,10 +369,63 @@ export default function Admin() {
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-3">
-                <LabelTable />
+              <div className="px-4 pb-4">
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Order JSON</p>
+                <JsonUploadZone
+                  onFile={handleJsonFile}
+                  loading={jsonImportLoading}
+                  result={jsonImportResult}
+                />
               </div>
-            </div>
+
+              {jsonImportResult && jsonImportResult.sizes.length > 0 && (
+                <div className="px-4 pb-2 space-y-2">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Preview Size</p>
+                  <select
+                    className="w-full border rounded px-2 py-1 text-sm"
+                    value={selectedImportSize}
+                    onChange={e => setSelectedImportSize(e.target.value)}
+                  >
+                    {jsonImportResult.sizes.map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                  {selectedImportSize && (() => {
+                    const fields = jsonImportResult.fields_by_size[selectedImportSize] ?? []
+                    return fields.length > 0 ? (
+                      <div className="border rounded bg-gray-50 max-h-64 overflow-y-auto">
+                        <table className="w-full text-xs">
+                          <thead className="sticky top-0 bg-gray-100 z-10">
+                            <tr className="border-b text-gray-500">
+                              <th className="py-1 px-2 text-left font-medium w-8">#</th>
+                              <th className="py-1 px-2 text-left font-medium">Field</th>
+                              <th className="py-1 px-2 text-left font-medium">Value</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {fields.map(f => (
+                              <tr key={f.num} className="border-b border-gray-100 last:border-0">
+                                <td className="py-0.5 px-2 text-gray-400 tabular-nums">{f.num}</td>
+                                <td className="py-0.5 px-2 font-medium text-gray-600 whitespace-nowrap">{f.field}</td>
+                                <td className="py-0.5 px-2 text-gray-800 font-mono" title={f.path}>{f.value || <span className="text-gray-300">—</span>}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : null
+                  })()}
+                </div>
+              )}
+
+              <div className="flex-1 overflow-y-auto p-3">
+                <LabelTable changesForSize={
+                  selectedImportSize && jsonImportResult
+                    ? (jsonImportResult.changes_by_size[selectedImportSize] ?? {})
+                    : {}
+                } />
+              </div>
+            </ResizablePanel>
           </>
         )}
 

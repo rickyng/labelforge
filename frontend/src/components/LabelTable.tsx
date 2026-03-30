@@ -1,7 +1,11 @@
 import React, { useRef, useEffect, useMemo } from 'react'
 import { useLabels } from '../context/LabelsContext'
 
-export function LabelTable() {
+interface LabelTableProps {
+  changesForSize?: Record<string, string>
+}
+
+export function LabelTable({ changesForSize = {} }: LabelTableProps) {
   const {
     labels,
     selectedLabelId,
@@ -67,6 +71,7 @@ export function LabelTable() {
               <th className="py-1.5 px-1">ID</th>
               <th className="py-1.5 px-1">Pg</th>
               <th className="py-1.5 px-1">Original Text</th>
+              <th className="py-1.5 px-1">Intended</th>
               <th className="py-1.5 px-1">Sz</th>
               <th className="py-1.5 px-1">Color</th>
             </tr>
@@ -76,11 +81,15 @@ export function LabelTable() {
               const isHovered = lbl.id === hoveredLabelId
               const isSelected = lbl.id === selectedLabelId
               const isEditable = editableSet.has(lbl.id)
+              const intendedValue = changesForSize[lbl.id]
+              const isMapped = intendedValue !== undefined
 
               const rowBg = isHovered
                 ? 'bg-sky-50'
                 : isSelected
                 ? 'bg-indigo-50'
+                : isMapped
+                ? 'bg-green-50'
                 : ''
 
               return (
@@ -104,8 +113,8 @@ export function LabelTable() {
                   </td>
 
                   {/* ID */}
-                  <td className="py-1 px-1 font-mono text-gray-400 max-w-[60px] truncate" title={lbl.id}>
-                    {lbl.id.slice(0, 8)}
+                  <td className="py-1 px-1 font-mono text-gray-400 max-w-[140px] truncate" title={lbl.id}>
+                    {lbl.id}
                   </td>
 
                   {/* Page */}
@@ -114,6 +123,14 @@ export function LabelTable() {
                   {/* Original Text */}
                   <td className="py-1 px-1 max-w-[160px] truncate text-gray-700" title={lbl.original_text}>
                     {lbl.original_text || <em className="text-gray-600">empty</em>}
+                  </td>
+
+                  {/* Intended value from JSON */}
+                  <td className="py-1 px-1 max-w-[140px] truncate" title={intendedValue}>
+                    {isMapped
+                      ? <span className="text-green-700 font-medium">{intendedValue}</span>
+                      : <span className="text-gray-300">—</span>
+                    }
                   </td>
 
                   {/* Font Size (read-only) */}

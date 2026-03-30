@@ -195,15 +195,17 @@ def extract_embedded_fonts(doc: fitz.Document) -> dict[str, bytes]:
     seen_xrefs: set[int] = set()
     fonts: dict[str, bytes] = {}
     for page in doc:
-        for xref, _ext, _type, name, _enc, _ref in page.get_fonts(full=True):
+        for font_entry in page.get_fonts(full=True):
+            xref, _ext, _type, name, _enc = font_entry[0], font_entry[1], font_entry[2], font_entry[3], font_entry[4]
             if xref == 0 or xref in seen_xrefs:
                 continue
             seen_xrefs.add(xref)
             try:
-                font_dict = doc.extract_font(xref)
+                font_tuple = doc.extract_font(xref)
             except Exception:  # noqa: BLE001
                 continue
-            content = font_dict.get("content") if font_dict else None
+            # fitz >= 1.23 returns a tuple (name, ext, type, content)
+            content = font_tuple[3] if isinstance(font_tuple, (tuple, list)) and len(font_tuple) >= 4 else (font_tuple.get("content") if font_tuple else None)
             if not content:
                 continue
             key = strip_subset_prefix(name).lower()
