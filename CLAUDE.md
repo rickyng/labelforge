@@ -87,6 +87,8 @@ labelforge/
 │   ├── utils.py             # Font resolution, color helpers, extract_embedded_fonts
 │   └── barcode_handler.py   # Barcode decode/overlay via libzbar
 ├── generate_changes.py      # Script: Mango order JSON + components.json → per-size changes.json
+├── start.sh                 # Dev launcher (macOS/Linux)
+├── start.ps1                # Dev launcher (Windows)
 ├── Dockerfile
 ├── docker-compose.yml
 └── CLAUDE.md
@@ -110,6 +112,17 @@ npm run dev
 # Runs on http://localhost:5173
 # /api/* requests are proxied to http://localhost:8000
 ```
+
+### Both at once (macOS/Linux)
+```bash
+./start.sh
+```
+
+### Both at once (Windows)
+```powershell
+powershell -ExecutionPolicy Bypass -File start.ps1
+```
+Requires `.venv` created at project root and `npm` on PATH.
 
 ### Docker (full stack)
 ```bash

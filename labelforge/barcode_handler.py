@@ -9,6 +9,9 @@ from __future__ import annotations
 
 import io
 import logging
+import os
+import shutil
+import tempfile
 from pathlib import Path
 
 import fitz  # PyMuPDF
@@ -145,7 +148,13 @@ def apply_barcode_replacement(
     doc = fitz.open(str(input_path))
     try:
         replace_component_image(doc, page_num, bbox, new_image_bytes)
-        doc.save(str(output_path), garbage=4, deflate=True)
+        if input_path.resolve() == output_path.resolve():
+            tmp_fd, tmp_name = tempfile.mkstemp(suffix='.pdf')
+            os.close(tmp_fd)
+            doc.save(tmp_name, garbage=4, deflate=True)
+            shutil.move(tmp_name, str(output_path))
+        else:
+            doc.save(str(output_path), garbage=4, deflate=True)
         logger.info("Saved barcode-replaced PDF to %s", output_path)
     finally:
         doc.close()
