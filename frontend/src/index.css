@@ -1,0 +1,81 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    @apply antialiased;
+    background: #FAFAFA;
+    color: #1A1A1A;
+    font-family: 'DM Sans', system-ui, sans-serif;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #F0F0EC;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #C8C8C4;
+    border-radius: 9999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #ADADAA;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply font-semibold px-4 py-2 transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed;
+    background: #1A1A1A;
+    color: #FAFAFA;
+    border-radius: 4px;
+    border: none;
+    box-shadow: none;
+    font-family: 'DM Sans', system-ui, sans-serif;
+    letter-spacing: 0.01em;
+  }
+  .btn-primary:hover:not(:disabled) { background: #333333; }
+  .btn-primary:active:not(:disabled) { background: #000000; }
+
+  .btn-secondary {
+    @apply font-semibold px-4 py-2 transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed;
+    background: transparent;
+    border: 1.5px solid #1A1A1A;
+    color: #1A1A1A;
+    border-radius: 4px;
+    box-shadow: none;
+    font-family: 'DM Sans', system-ui, sans-serif;
+  }
+  .btn-secondary:hover:not(:disabled) { background: #F4F4F0; }
+  .btn-secondary:active:not(:disabled) { background: #E8E8E4; }
+
+  .input-field {
+    @apply text-sm transition-all duration-150 w-full;
+    background: #fff;
+    border: 1.5px solid #E4E4E0;
+    border-radius: 4px;
+    padding: 8px 12px;
+    color: #1A1A1A;
+    font-family: 'DM Sans', system-ui, sans-serif;
+    box-shadow: none;
+  }
+  .input-field::placeholder { color: #ADADAA; }
+  .input-field:focus {
+    outline: none;
+    border-color: #F59E0B;
+    box-shadow: 0 0 0 3px rgba(245,158,11,0.15);
+  }
+
+}
