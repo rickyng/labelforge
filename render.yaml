@@ -1,0 +1,52 @@
+services:
+  - type: web
+    name: labelforge
+    runtime: docker
+    plan: starter
+    region: oregon
+    branch: main
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+
+    envVars:
+      # ── Port (Render auto-sets; do not override) ──
+      - key: PORT
+        sync: false
+
+      # ── Database ──
+      - key: LABELFORGE_DB_PATH
+        value: /data/labelforge.db
+
+      # ── CORS ──
+      # Update this to match your actual Render URL after first deploy
+      - key: LABELFORGE_CORS_ORIGINS
+        value: https://labelforge-rl8z.onrender.com
+
+      # ── Turso (set as Secrets in Render dashboard) ──
+      - key: TURSO_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false
+
+      # ── Credentials (set as Secrets in Render dashboard) ──
+      - key: LABELFORGE_ADMIN_USER
+        sync: false
+      - key: LABELFORGE_ADMIN_PASS
+        sync: false
+      - key: LABELFORGE_USER_USER
+        sync: false
+      - key: LABELFORGE_USER_PASS
+        sync: false
+
+      # ── Upload limit ──
+      - key: LABELFORGE_MAX_UPLOAD_MB
+        value: "50"
+
+    # Persistent disk for SQLite database
+    disk:
+      name: labelforge-data
+      mountPath: /data
+      sizeGB: 1
+
+    # Health check
+    healthCheckPath: /api/health

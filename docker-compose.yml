@@ -1,0 +1,9 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - TURSO_URL=${TURSO_URL}
+      - TURSO_AUTH_TOKEN=${TURSO_AUTH_TOKEN}
+    restart: unless-stopped
