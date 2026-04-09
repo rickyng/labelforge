@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Frontend build artifacts and deps (rebuilt in Docker)
+frontend/node_modules/
+frontend/dist/
+
+# Database (mounted as volume)
+backend/labelforge.db
+
+# Dev / IDE
+.vscode/
+.idea/
+.claude/
+.git/
+
+# OS
+.DS_Store
+
+# Test / CI
+tests/
+*.md
+!README.md
