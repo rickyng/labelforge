@@ -66,8 +66,13 @@ export function AdminOverlay({ canvasWidth, canvasHeight, pdfScale, currentPage,
           const strokeWidth = isHovered || isSelected ? 2.5 : style.strokeWidth
 
           let tooltipText = `${c.id}\n${c.type}`
-          if (c.type === 'SHAPE' && c.fill_color) {
-            tooltipText += `\nfill: ${c.fill_color}`
+          if (c.type === 'SHAPE') {
+            if (c.ocr_text) {
+              tooltipText += `\nOCR: "${c.ocr_text}" (${c.ocr_confidence != null ? (c.ocr_confidence * 100).toFixed(0) + '%' : '?'})`
+            }
+            if (c.fill_color) {
+              tooltipText += `\nfill: ${c.fill_color}`
+            }
           } else if (c.type === 'BARCODE' && c.barcode_value) {
             tooltipText += `\nvalue: ${c.barcode_value}`
           } else if (c.type === 'IMAGE') {

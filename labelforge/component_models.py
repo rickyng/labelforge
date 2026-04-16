@@ -69,6 +69,11 @@ class DocumentComponent(BaseModel):
     stroke_width: float | None = None            # line width in points
     shape_drawings: list | None = None           # serialized path items for redraw
 
+    # OCR fields (for SHAPE components with detected outlined text)
+    ocr_text: str | None = None                  # OCR-detected text content
+    ocr_confidence: float | None = None          # OCR confidence score (0.0–1.0)
+    ocr_language: str | None = None              # Detected language (e.g., "zh", "ja", "ko")
+
     # TEXT span provenance — needed for pixel-perfect apply
     flags: int | None = None        # font bitmask: bold=16, italic=2
     rotation: int | None = None     # page rotation in degrees

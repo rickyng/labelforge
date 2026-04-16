@@ -67,6 +67,155 @@ _SYSTEM_FONT_PATHS: list[tuple[str, list[str]]] = [
     ]),
 ]
 
+# CJK font paths (Noto Sans CJK, Apple system fonts, common Linux fonts)
+_CJK_FONT_PATHS: list[tuple[str, list[str]]] = [
+    ("notosanscjksc", [
+        "/System/Library/Fonts/Supplemental/NotoSansCJKsc-Regular.otf",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+    ]),
+    ("notosanscjkjp", [
+        "/System/Library/Fonts/Supplemental/NotoSansCJKjp-Regular.otf",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+    ]),
+    ("notosanscjkkr", [
+        "/System/Library/Fonts/Supplemental/NotoSansCJKkr-Regular.otf",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+    ]),
+    ("applesdgothicneokorean", [
+        "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+    ]),
+    ("hiragino", [
+        "/System/Library/Fonts/Hiragino Sans W3.ttc",
+        "/System/Library/Fonts/Hiragino Sans W6.ttc",
+    ]),
+    ("pingfangsc", [
+        "/System/Library/Fonts/PingFang.ttc",
+    ]),
+]
+
+# Unicode-capable fonts supporting CJK + Arabic + Cyrillic + more
+_UNICODE_FONT_PATHS: list[str] = [
+    "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+    "/usr/share/fonts/truetype/arial-unicode/Arial_Unicode.ttf",
+    "/usr/share/fonts/truetype/arialuni.ttf",
+    "/usr/share/fonts/truetype/msttcorefonts/arialuni.ttf",
+]
+
+
+def contains_non_latin(text: str) -> bool:
+    """Check if text contains non-Latin characters (CJK, Arabic, Cyrillic, etc.).
+
+    Returns True if the text contains characters outside the basic Latin range
+    that require a Unicode-capable font for proper rendering.
+
+    Args:
+        text: String to check for non-Latin characters.
+
+    Returns:
+        True if text contains CJK, Arabic, Cyrillic, Hangul, or Japanese characters.
+    """
+    if not text:
+        return False
+
+    for char in text:
+        # CJK Unified Ideographs (common Chinese characters)
+        if "\u4e00" <= char <= "\u9fff":
+            return True
+        # CJK Extension A (less common Chinese)
+        if "\u3400" <= char <= "\u4dbf":
+            return True
+        # Arabic script
+        if "\u0600" <= char <= "\u06ff":
+            return True
+        # Arabic Presentation Forms A/B (ligatures, etc.)
+        if "\ufb50" <= char <= "\ufdff" or "\ufe70" <= char <= "\ufeff":
+            return True
+        # Cyrillic (Russian, Ukrainian, etc.)
+        if "\u0400" <= char <= "\u04ff":
+            return True
+        # Cyrillic Supplement
+        if "\u0500" <= char <= "\u052f":
+            return True
+        # Hangul (Korean syllables)
+        if "\uac00" <= char <= "\ud7af":
+            return True
+        # Hiragana (Japanese)
+        if "\u3040" <= char <= "\u309f":
+            return True
+        # Katakana (Japanese)
+        if "\u30a0" <= char <= "\u30ff":
+            return True
+        # Hebrew
+        if "\u0590" <= char <= "\u05ff":
+            return True
+        # Thai
+        if "\u0e00" <= char <= "\u0e7f":
+            return True
+    return False
+
+
+def resolve_unicode_font() -> str | None:
+    """Find a Unicode-capable font supporting CJK, Arabic, Cyrillic, and more.
+
+    Resolution order:
+    1. Arial Unicode MS (most comprehensive, 23MB on macOS)
+    2. System CJK fonts via resolve_cjk_font()
+
+    Returns:
+        Absolute path to a Unicode font file, or None if none found.
+    """
+    for p in _UNICODE_FONT_PATHS:
+        if Path(p).exists():
+            return p
+
+    # Fall back to CJK font if no Unicode font found
+    return resolve_cjk_font()
+
+
+def resolve_cjk_font(language: str | None = None) -> str | None:
+    """Find a CJK font file suitable for the given language.
+
+    Resolution order:
+    1. Language-specific Noto Sans CJK (sc, jp, kr)
+    2. Generic Noto Sans CJK Regular
+    3. Apple system fonts (macOS)
+
+    Args:
+        language: ISO 639-1 code (e.g., "zh", "ja", "ko") or None for any.
+
+    Returns:
+        Absolute path to a CJK font file, or None if none found.
+    """
+    # Language-specific preference
+    lang_fragment = ""
+    if language:
+        lang_lower = language.lower()
+        if lang_lower in ("zh", "ch_sim", "ch_tra"):
+            lang_fragment = "sc"
+        elif lang_lower in ("ja", "jp"):
+            lang_fragment = "jp"
+        elif lang_lower in ("ko", "kr"):
+            lang_fragment = "kr"
+
+    # Try language-specific first
+    if lang_fragment:
+        for fragment, paths in _CJK_FONT_PATHS:
+            if lang_fragment in fragment:
+                for p in paths:
+                    if Path(p).exists():
+                        return p
+
+    # Fall back to any CJK font
+    for fragment, paths in _CJK_FONT_PATHS:
+        for p in paths:
+            if Path(p).exists():
+                return p
+
+    return None
+
 
 def resolve_font_file(fontname: str, flags: int = 0) -> str | None:
     """Try to find a system font file matching the given PDF font name.

@@ -96,25 +96,41 @@ def _text_components_to_label_dtos(components, fills: dict[str, str] | None = No
     ]
 
 
-def run_analysis(session: SessionData) -> tuple[list, int, str | None]:
+def run_analysis(session: SessionData, enable_ocr: bool = False) -> tuple[list, int, str | None]:
     """Run component extraction on the session's input file.
 
     Returns (label_dtos, page_count, mapping_name).
     Derives LabelDTOs from TEXT components (single source of truth).
+
+    Args:
+        session: The active session.
+        enable_ocr: If True, run OCR on shapes in zones defined by the mapping.
     """
     import fitz
     from labelforge.document_analyzer import extract_components
-    from labelforge.mappings import detect_mapping
+    from labelforge.mappings import detect_mapping, get_ocr_zones
 
     doc = fitz.open(str(session.input_path))
     page_count = doc.page_count
-    components = extract_components(doc)
+
+    # Pre-detect mapping to get OCR zones
+    _tmp_components = extract_components(doc)
+    component_ids = {c.id for c in _tmp_components}
+    mapping_name = detect_mapping(component_ids)
+
+    ocr_zones = None
+    if enable_ocr and mapping_name:
+        ocr_zones = get_ocr_zones(mapping_name)
+
+    # Re-extract with OCR if zones are available
+    if ocr_zones:
+        components = extract_components(doc, enable_ocr=True, ocr_zones=ocr_zones)
+    else:
+        components = _tmp_components
+
     doc.close()
 
     session.extra["components"] = components
-
-    component_ids = {c.id for c in components}
-    mapping_name = detect_mapping(component_ids)
     session.extra["mapping_name"] = mapping_name
 
     return _text_components_to_label_dtos(components), page_count, mapping_name

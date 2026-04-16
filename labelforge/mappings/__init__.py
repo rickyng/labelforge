@@ -21,6 +21,9 @@ _ASSIGN_FNS: dict[str, Callable] = {}
 _TEMPLATE_MAPPINGS: dict[str, Callable] = {}
 AI_FILE_MAP: dict[str, str] = {}
 BARCODE_REGION_MAP: dict[str, dict[str, dict]] = {}
+_GROUPING_MODES: dict[str, str] = {}  # template_name -> "span" | "line" | "block"
+OCR_ZONES: dict[str, dict[str, tuple[float, float, float, float]]] = {}  # mapping_name -> {zone_name: bbox}
+CJK_FALLBACK_FONTS: dict[str, str] = {}  # template_name -> font name
 
 
 def _register(mod: ModuleType) -> None:
@@ -50,6 +53,22 @@ def _register(mod: ModuleType) -> None:
     if name and barcode_regions:
         BARCODE_REGION_MAP[name] = barcode_regions
 
+    # Grouping mode for component display
+    grouping_mode: str | None = getattr(mod, "GROUPING_MODE", None)
+    key = template_name or name
+    if key and grouping_mode:
+        _GROUPING_MODES[key] = grouping_mode
+
+    # OCR zones for outlined text detection (CJK etc.)
+    ocr_zones: dict | None = getattr(mod, "OCR_ZONES", None)
+    if name and ocr_zones:
+        OCR_ZONES[name] = ocr_zones
+
+    # CJK fallback font for text insertion during apply
+    cjk_font: str | None = getattr(mod, "CJK_FALLBACK_FONT", None)
+    if key and cjk_font:
+        CJK_FALLBACK_FONTS[key] = cjk_font
+
 
 for _mi in pkgutil.iter_modules(__path__):
     _mod = importlib.import_module(f".{_mi.name}", package="labelforge.mappings")
@@ -69,6 +88,24 @@ def get_build_changes(template_name: str) -> Callable | None:
 def get_ai_file(template_name: str) -> str | None:
     """Return the AI file path for a template, or None."""
     return AI_FILE_MAP.get(template_name)
+
+
+def get_grouping_mode(template_name: str) -> str:
+    """Return the grouping mode for a template.
+
+    Returns "span", "line", or "block". Defaults to "span" if not defined.
+    """
+    return _GROUPING_MODES.get(template_name, "span")
+
+
+def get_ocr_zones(mapping_name: str) -> dict[str, tuple[float, float, float, float]] | None:
+    """Return OCR zones for a mapping, or None if not defined."""
+    return OCR_ZONES.get(mapping_name)
+
+
+def get_cjk_fallback_font(template_name: str) -> str | None:
+    """Return the CJK fallback font for a template, or None if not defined."""
+    return CJK_FALLBACK_FONTS.get(template_name)
 
 
 def detect_mapping(component_ids: set[str]) -> str | None:

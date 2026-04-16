@@ -42,6 +42,9 @@ def _component_to_dto(c: DocumentComponent) -> ComponentDTO:
         fill_opacity=c.fill_opacity,
         stroke_color=c.stroke_color,
         stroke_width=c.stroke_width,
+        ocr_text=c.ocr_text,
+        ocr_confidence=c.ocr_confidence,
+        ocr_language=c.ocr_language,
     )
 
 

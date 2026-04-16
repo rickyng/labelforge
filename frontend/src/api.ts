@@ -94,3 +94,11 @@ export async function applyDirect(
   )
   return handleResponse<ProfileApplyResponse>(res)
 }
+
+export async function fetchSampleOrder(): Promise<{ file: File; data: unknown }> {
+  const res = await fetchWithTimeout(`${BASE}/sample-order`, { credentials: 'include' })
+  const data = await handleResponse<unknown>(res)
+  const blob = new Blob([JSON.stringify(data)], { type: 'application/json' })
+  const file = new File([blob], '4500801837-00000017-205456MK26.json', { type: 'application/json' })
+  return { file, data }
+}

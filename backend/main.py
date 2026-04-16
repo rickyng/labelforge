@@ -6,6 +6,7 @@ Run from labelforge-web/ root:
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -15,7 +16,7 @@ from typing import AsyncGenerator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from .db import init_db
 from .routers import configs, components, download, editable, templates, upload, user_labels
@@ -71,6 +72,17 @@ app.include_router(templates.router, prefix="/api", tags=["templates"])
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+_SAMPLE_ORDER = Path(__file__).resolve().parent.parent / "4500801837-00000017-205456MK26.json"
+
+
+@app.get("/api/sample-order")
+def get_sample_order():
+    """Return the sample order JSON file for quick testing."""
+    if not _SAMPLE_ORDER.exists():
+        return JSONResponse({"detail": "Sample order file not found."}, status_code=404)
+    return JSONResponse(content=json.loads(_SAMPLE_ORDER.read_text(encoding="utf-8")))
 
 
 # Serve built frontend (production / Docker). Skipped in dev (dist won't exist).

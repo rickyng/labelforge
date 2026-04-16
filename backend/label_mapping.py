@@ -126,6 +126,87 @@ def _resolve_expression(data: dict, expr: str):
         return None
 
 
+def _apply_translation(
+    values: list[str | None], translate_spec: dict, order: dict
+) -> tuple[list[str | None], list[str | None], dict[str, dict[str, str]]]:
+    """Apply translation lookup to resolved values.
+
+    Args:
+        values: Raw resolved values (codes like "C005", "MA")
+        translate_spec: Translation specification dict with keys:
+            - sheet: Excel sheet name (required)
+            - multi_lang: If True, return multi-language string
+            - type: "simple", "importer", or "country"
+        order: Full order JSON for context
+
+    Returns:
+        Tuple of (translated_values, fallback_values, translations_by_lang)
+    """
+    from labelforge.mappings.translation import (
+        translate,
+        get_multi_language_string,
+        get_importer_text,
+        get_rules_from_order,
+        get_russian_age_text,
+    )
+
+    translated: list[str | None] = []
+    fallback: list[str | None] = []
+    by_lang: dict[str, dict[str, str]] = {}
+
+    sheet = translate_spec.get("sheet")
+    multi_lang = translate_spec.get("multi_lang", False)
+    translate_type = translate_spec.get("type", "simple")
+
+    for i, raw_val in enumerate(values):
+        if raw_val is None or raw_val == "":
+            translated.append(None)
+            fallback.append(raw_val)
+            continue
+
+        result = None
+        lang_dict: dict[str, str] = {}
+
+        if translate_type == "importer":
+            # Importer lookup by destination
+            result = get_importer_text(raw_val)
+        elif translate_type == "country":
+            # Country of origin - multi-language
+            if multi_lang:
+                result = get_multi_language_string(raw_val, sheet)
+            else:
+                result = translate(raw_val, sheet, "SPANISH")
+        elif translate_type == "rules":
+            # JSON-RULES lookup
+            rules = get_rules_from_order(order)
+            field_name = translate_spec.get("field")
+            result = rules.get(field_name)
+            if result is not None:
+                result = str(result) if not isinstance(result, str) else result
+        elif translate_type == "russian_age":
+            # Special Russian age text lookup
+            size_group = raw_val
+            line_path = translate_spec.get("line_path", "StyleColor[0].Line")
+            line = _resolve_expression(order, line_path) if line_path else None
+            result = get_russian_age_text(size_group, line)
+        elif translate_type == "multi":
+            # Multi-language string for any sheet
+            result = get_multi_language_string(raw_val, sheet)
+        else:
+            # Simple translation
+            if multi_lang:
+                result = get_multi_language_string(raw_val, sheet)
+            else:
+                result = translate(raw_val, sheet, "SPANISH")
+
+        translated.append(result)
+        fallback.append(raw_val)
+        if result:
+            by_lang[str(i)] = {"default": result}
+
+    return translated, fallback, by_lang
+
+
 def resolve_template_fields(template_name: str, order_data: dict) -> dict | None:
     """Resolve all template field json_paths against order JSON data.
 
@@ -145,9 +226,13 @@ def resolve_template_fields(template_name: str, order_data: dict) -> dict | None
 
     for f in fields_def:
         json_path = f["json_path"]
+        translate_spec = f.get("translate")
         field_type = _classify_field(json_path)
 
         values: list[str | None] = []
+        translated_values: list[str | None] = []
+        translations_by_lang: dict[str, dict[str, str]] = {}
+
         if json_path:
             result = _resolve_expression(order, json_path)
             if isinstance(result, list):
@@ -157,12 +242,20 @@ def resolve_template_fields(template_name: str, order_data: dict) -> dict | None
             else:
                 values = [str(result) if result is not None else None]
 
+            # Apply translation if specified
+            if translate_spec:
+                translated_values, _, translations_by_lang = _apply_translation(
+                    values, translate_spec, order
+                )
+
         resolved_fields.append({
             "id": f["id"],
             "pdf_reference": f["pdf_reference"],
             "json_path": json_path,
             "field_type": field_type,
             "values": values,
+            "translated_values": translated_values if translate_spec else values,
+            "translations_by_lang": translations_by_lang if translate_spec else {},
         })
 
     # Derive size names: prefer a field with "SizeName" in its json_path
@@ -210,10 +303,56 @@ def build_component_changes(template_name: str, order_data: dict) -> dict | None
 
 
 # ---------------------------------------------------------------------------
-# Template data (source: testData/json_matching.json)
+# Template data (source: labelforge/mappings/json_matching.json)
 # ---------------------------------------------------------------------------
 
 LABEL_TEMPLATES: dict[str, list[dict]] = {
+    "GI000DPO-SAP_1": [
+        # === Article number (used in FRONT and BACK) ===
+        {"id": "SC1", "pdf_reference": "Article No.", "json_path": "StyleColor[0].ReferenceID"},
+        # === Composition percentages ===
+        {"id": "CM6", "pdf_reference": "Composition 1 %", "json_path": "StyleColor[0].Composition[0].Fabric[0].FabricPercent"},
+        {"id": "CM10", "pdf_reference": "Composition 2 %", "json_path": "StyleColor[0].Composition[0].Fabric[1].FabricPercent"},
+        {"id": "CM14", "pdf_reference": "Composition 3 %", "json_path": "StyleColor[0].Composition[0].Fabric[2].FabricPercent"},
+        # === Composition fabric names (translated, multi-language) ===
+        {"id": "CM3_TXT", "pdf_reference": "Composition 1 Name",
+         "json_path": "StyleColor[0].Composition[0].Fabric[0].Fabricode",
+         "translate": {"sheet": "MATERIALS", "type": "multi"}},
+        {"id": "CM7_TXT", "pdf_reference": "Composition 2 Name",
+         "json_path": "StyleColor[0].Composition[0].Fabric[1].Fabricode",
+         "translate": {"sheet": "MATERIALS", "type": "multi"}},
+        {"id": "CM11_TXT", "pdf_reference": "Composition 3 Name",
+         "json_path": "StyleColor[0].Composition[0].Fabric[2].Fabricode",
+         "translate": {"sheet": "MATERIALS", "type": "multi"}},
+        # === Zone A: Country of Origin (multi-language) ===
+        {"id": "ZA1", "pdf_reference": "Zone A Country of Origin",
+         "json_path": "StyleColor[0].Origin.Code_Country",
+         "translate": {"sheet": "MADE IN COUNTRY", "type": "country", "multi_lang": True}},
+        # === Zone B: Importer Text ===
+        {"id": "ZB_IMP", "pdf_reference": "Zone B Importer Text",
+         "json_path": "StyleColor[0].Destination.dc",
+         "translate": {"type": "importer"}},
+        # === Zone C: Triman Logo (from JSON-RULES) ===
+        {"id": "ZC_TRIM", "pdf_reference": "Zone C Triman Logo",
+         "json_path": "StyleColor[0].ProductTypeCodeLegacy",
+         "translate": {"type": "rules", "field": "triman"}},
+        # === Zone D: EAC Symbol (from JSON-RULES) ===
+        {"id": "ZD_EAC", "pdf_reference": "Zone D EAC Symbol",
+         "json_path": "StyleColor[0].ProductTypeCodeLegacy",
+         "translate": {"type": "rules", "field": "eac"}},
+        # === Zone E: French Compliance Text (from JSON-RULES) ===
+        {"id": "ZE_FRENCH", "pdf_reference": "Zone E French Compliance",
+         "json_path": "StyleColor[0].ProductTypeCodeLegacy",
+         "translate": {"type": "rules", "field": "french_text"}},
+        # === Zone F: Korean Symbol (from JSON-RULES) ===
+        {"id": "ZF_KOREAN", "pdf_reference": "Zone F Korean Symbol",
+         "json_path": "StyleColor[0].ProductTypeCodeLegacy",
+         "translate": {"type": "rules", "field": "korean_symbol"}},
+        # === Zone G: Russian Age Text ===
+        {"id": "ZG_RUSSIAN", "pdf_reference": "Zone G Russian Age Text",
+         "json_path": "StyleColor[0].SizeGroupLegay",
+         "translate": {"type": "russian_age", "line_path": "StyleColor[0].Line"}},
+    ],
     "PVPV0102-PVP002XG": [
         {"id": "1", "pdf_reference": "ITEM DATATQTY", "json_path": "StyleColor[0].ItemData[#].itemQty"},
         {"id": "2", "pdf_reference": "Code of supplier", "json_path": "Supplier.SupplierCode"},
@@ -241,17 +380,17 @@ LABEL_TEMPLATES: dict[str, list[dict]] = {
         {"id": "24", "pdf_reference": "Size: CN", "json_path": "StyleColor[0].ItemData[#].SizeNameCN"},
         {"id": "25", "pdf_reference": "Family + Generic (ES)", "json_path": "StyleColor[0].ProductTypeES"},
         {"id": "26", "pdf_reference": "Layout text", "json_path": ""},
-        {"id": "27", "pdf_reference": "Integer price ES (EUR)", "json_path": "StyleColor[0].ItemData[#].PVP_ES"},
-        {"id": "28", "pdf_reference": "Decimal price ES (EUR)", "json_path": "StyleColor[0].ItemData[#].PVP_ES"},
+        {"id": "27", "pdf_reference": "Integer price ES (EUR)", "json_path": "StyleColor[0].PVP_ES"},
+        {"id": "28", "pdf_reference": "Decimal price ES (EUR)", "json_path": "StyleColor[0].PVP_ES"},
         {"id": "29", "pdf_reference": "Special Size LEFT", "json_path": "StyleColor[0].Set"},
         {"id": "30", "pdf_reference": "Size Range", "json_path": "StyleColor[0].SizeRange[0].SizeName"},
         {"id": "31", "pdf_reference": "Special Size RIGHT", "json_path": ""},
         {"id": "32", "pdf_reference": "OPI MARK", "json_path": ""},
         {"id": "33", "pdf_reference": "Family + Generic (EN)", "json_path": "StyleColor[0].ProductType"},
-        {"id": "34", "pdf_reference": "Integer price EU (EUR)", "json_path": "StyleColor[0].ItemData[#].PVP_EU"},
-        {"id": "35", "pdf_reference": "Decimal price EU (EUR)", "json_path": "StyleColor[0].ItemData[#].PVP_EU"},
-        {"id": "36", "pdf_reference": "Integer price IN (INR)", "json_path": "StyleColor[0].ItemData[#].PVP_IN"},
-        {"id": "37", "pdf_reference": "Decimal price IN (INR)", "json_path": "StyleColor[0].ItemData[#].PVP_IN"},
+        {"id": "34", "pdf_reference": "Integer price EU (EUR)", "json_path": "StyleColor[0].PVP_EU"},
+        {"id": "35", "pdf_reference": "Decimal price EU (EUR)", "json_path": "StyleColor[0].PVP_EU"},
+        {"id": "36", "pdf_reference": "Integer price IN (INR)", "json_path": "StyleColor[0].PVP_IN"},
+        {"id": "37", "pdf_reference": "Decimal price IN (INR)", "json_path": "StyleColor[0].PVP_IN"},
         {"id": "38", "pdf_reference": "QR CODE URL", "json_path": ""},
         {"id": "39", "pdf_reference": "SAP CODE", "json_path": "StyleColor[0].ItemData[#].MangoSAPSizeCode"},
     ],
@@ -289,10 +428,25 @@ LABEL_TEMPLATES: dict[str, list[dict]] = {
 }
 
 
+# Mapping from template_name to the LabelID used in JSON order data
+LABEL_ID_MAP: dict[str, str] = {
+    "ADHEDIST-mango": "ADHEDIST",
+    "GI000DPO-SAP_1": "GI000PRO",
+    "GI001BAW-GI001BAC": "GI001BAW",
+    "PVPV0102-PVP002XG": "PVP002XG",
+}
+
+
 def list_templates() -> list[dict]:
-    """Return all available template names with field counts."""
+    """Return all available template names with field counts and grouping modes."""
+    from labelforge.mappings import get_grouping_mode
     return [
-        {"name": name, "field_count": len(fields)}
+        {
+            "name": name,
+            "field_count": len(fields),
+            "label_id": LABEL_ID_MAP.get(name),
+            "grouping_mode": get_grouping_mode(name),
+        }
         for name, fields in LABEL_TEMPLATES.items()
     ]
 

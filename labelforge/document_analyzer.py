@@ -78,7 +78,7 @@ def _extract_text_components(
     out: list[DocumentComponent],
 ) -> None:
     """Extract text spans from a page using get_text('dict')."""
-    blocks = page.get_text("dict", flags=fitz.TEXT_PRESERVE_WHITESPACE).get("blocks", [])
+    blocks = page.get_text("dict", flags=fitz.TEXT_PRESERVE_WHITESPACE | fitz.TEXT_PRESERVE_LIGATURES).get("blocks", [])
     for b_idx, block in enumerate(blocks):
         if block.get("type") != 0:  # 0 = text block
             continue
@@ -292,10 +292,81 @@ def _extract_shape_components(
         ))
 
 
-def extract_components(doc: fitz.Document) -> list[DocumentComponent]:
+def _ocr_shape_components(
+    page: fitz.Page,
+    page_num: int,
+    components: list[DocumentComponent],
+    ocr_zones: dict[str, tuple[float, float, float, float]] | None = None,
+    languages: list[str] | None = None,
+    confidence_threshold: float = 0.5,
+) -> None:
+    """Run OCR on SHAPE components that fall within defined zones.
+
+    Modifies components in-place, populating ``ocr_text``, ``ocr_confidence``,
+    and ``ocr_language`` on matching SHAPE components.
+
+    Args:
+        page: PyMuPDF Page object.
+        page_num: 0-based page index.
+        components: List of already-extracted components (mutated in place).
+        ocr_zones: Mapping of zone_name → (x0, y0, x1, y1) in PDF points.
+            If *None*, OCR runs on **all** shape components.
+        languages: EasyOCR language codes (default: ``["ch_sim", "en", "ko"]``).
+        confidence_threshold: Minimum confidence to store OCR result.
+    """
+    from .ocr_handler import ocr_shape_region
+
+    # Collect SHAPE components for this page
+    shape_comps = [
+        c for c in components
+        if c.type == ComponentType.SHAPE and c.page == page_num
+    ]
+
+    if not shape_comps:
+        return
+
+    for comp in shape_comps:
+        # If zones are defined, only OCR shapes that overlap a zone
+        if ocr_zones:
+            matched = False
+            for zone_bbox in ocr_zones.values():
+                zr = fitz.Rect(zone_bbox)
+                cr = fitz.Rect(comp.bbox)
+                if not (zr & cr).is_empty:
+                    matched = True
+                    break
+            if not matched:
+                continue
+
+        text, confidence, lang = ocr_shape_region(
+            page, comp.bbox, dpi=150, languages=languages,
+        )
+
+        if text and confidence >= confidence_threshold:
+            comp.ocr_text = text
+            comp.ocr_confidence = confidence
+            comp.ocr_language = lang
+            logger.info(
+                "OCR on shape %s: '%s' (%.2f)",
+                comp.id, text, confidence,
+            )
+
+
+def extract_components(
+    doc: fitz.Document,
+    enable_ocr: bool = False,
+    ocr_zones: dict[str, tuple[float, float, float, float]] | None = None,
+    ocr_languages: list[str] | None = None,
+) -> list[DocumentComponent]:
     """Extract all components from every page of a PyMuPDF document.
 
     Returns a flat list of DocumentComponent objects ordered by page.
+
+    Args:
+        doc: PyMuPDF Document.
+        enable_ocr: If True, run OCR on SHAPE components in defined zones.
+        ocr_zones: Zone bboxes for OCR (mapping_name → {zone_name → bbox}).
+        ocr_languages: EasyOCR language codes for OCR.
     """
     components: list[DocumentComponent] = []
     for page_num in range(doc.page_count):
@@ -304,6 +375,14 @@ def extract_components(doc: fitz.Document) -> list[DocumentComponent]:
         _extract_image_components(doc, page, page_num, components)
         _scan_page_for_vector_barcodes(page, page_num, components)
         _extract_shape_components(page, page_num, components)
+
+        if enable_ocr:
+            _ocr_shape_components(
+                page, page_num, components,
+                ocr_zones=ocr_zones,
+                languages=ocr_languages,
+            )
+
         logger.info(
             "Page %d: extracted %d components so far",
             page_num,
@@ -312,21 +391,178 @@ def extract_components(doc: fitz.Document) -> list[DocumentComponent]:
     return components
 
 
-def extract_components_from_path(input_path: Path) -> ComponentsFile:
+def extract_components_from_path(
+    input_path: Path,
+    enable_ocr: bool = False,
+    ocr_zones: dict[str, tuple[float, float, float, float]] | None = None,
+    ocr_languages: list[str] | None = None,
+) -> ComponentsFile:
     """Convenience wrapper: open a PDF/AI file and extract all components.
 
     Returns a ComponentsFile that embeds the absolute source path so that
     `labelforge apply --components` needs no separate input file argument.
+
+    Args:
+        input_path: Path to the PDF or AI file.
+        enable_ocr: If True, run OCR on SHAPE components in defined zones.
+        ocr_zones: Zone bboxes for OCR (zone_name → bbox tuple).
+        ocr_languages: EasyOCR language codes.
     """
     doc = fitz.open(str(input_path))
     try:
-        components = extract_components(doc)
+        components = extract_components(
+            doc,
+            enable_ocr=enable_ocr,
+            ocr_zones=ocr_zones,
+            ocr_languages=ocr_languages,
+        )
     finally:
         doc.close()
     return ComponentsFile(
         source_file=str(input_path.resolve()),
         components=components,
     )
+
+
+from typing import Literal
+
+
+def group_text_components(
+    components: list[DocumentComponent],
+    mode: Literal["span", "line", "block"] = "span",
+) -> list[DocumentComponent]:
+    """Group TEXT components by the specified granularity.
+
+    Args:
+        components: List of DocumentComponent objects (span-level)
+        mode: Grouping mode
+            - "span": no grouping, return as-is
+            - "line": group by (page, block, line) → p{page}_t_b{block}_l{line}
+            - "block": group by (page, block) → p{page}_t_b{block}
+
+    Returns:
+        New list with TEXT components grouped, non-TEXT unchanged.
+    """
+    if mode == "span":
+        return components
+
+    # Separate TEXT from non-TEXT components
+    text_comps = [c for c in components if c.type == ComponentType.TEXT]
+    non_text_comps = [c for c in components if c.type != ComponentType.TEXT]
+
+    if not text_comps:
+        return components
+
+    # Build grouping key -> list of components
+    from collections import defaultdict
+
+    grouped: dict[tuple, list[DocumentComponent]] = defaultdict(list)
+
+    for comp in text_comps:
+        # Parse component ID: p{page}_t_b{block}_l{line}_s{span}
+        parts = comp.id.split("_")
+        if len(parts) < 5 or not parts[0].startswith("p"):
+            # Unknown format, treat as its own group
+            key = (comp.page, comp.id)
+            grouped[key].append(comp)
+            continue
+
+        try:
+            page_num = int(parts[0][1:])  # p0 -> 0
+            block_num = int(parts[2][1:])  # b4 -> 4
+
+            if mode == "line":
+                line_num = int(parts[4][1:])  # l7 -> 7
+                key = (page_num, block_num, line_num)
+            else:  # block
+                key = (page_num, block_num)
+
+            grouped[key].append(comp)
+        except (IndexError, ValueError):
+            # Parsing failed, keep as individual
+            key = (comp.page, comp.id)
+            grouped[key].append(comp)
+
+    # Merge each group into a single component
+    result_components: list[DocumentComponent] = list(non_text_comps)
+
+    # Sort keys for consistent ordering
+    sorted_keys = sorted(grouped.keys(), key=lambda k: (k[0] if len(k) >= 1 else 0,
+                                                        k[1] if len(k) >= 2 else 0,
+                                                        k[2] if len(k) >= 3 else 0))
+
+    for key in sorted_keys:
+        group = grouped[key]
+
+        if len(group) == 1:
+            # Single component, just update ID if needed
+            comp = group[0]
+            if mode == "line":
+                # Change ID from p{page}_t_b{block}_l{line}_s{span} to p{page}_t_b{block}_l{line}
+                new_id = f"p{comp.page}_t_b{key[1]}_l{key[2]}"
+            else:  # block
+                new_id = f"p{comp.page}_t_b{key[1]}"
+            result_components.append(DocumentComponent(
+                id=new_id,
+                type=comp.type,
+                page=comp.page,
+                bbox=comp.bbox,
+                text=comp.text,
+                fontname=comp.fontname,
+                fontsize=comp.fontsize,
+                color=comp.color,
+                flags=comp.flags,
+                rotation=comp.rotation,
+                origin=comp.origin,
+                editable=comp.editable,
+            ))
+        else:
+            # Multiple spans in group - merge them
+            # Union bbox
+            min_x = min(c.bbox[0] for c in group)
+            min_y = min(c.bbox[1] for c in group)
+            max_x = max(c.bbox[2] for c in group)
+            max_y = max(c.bbox[3] for c in group)
+
+            # Concatenate text (sorted by span index within line/block)
+            # Group was built from original component order, sort by span index
+            sorted_group = sorted(group, key=lambda c: c.id)
+
+            # For line mode, spans are already ordered left-to-right in the PDF
+            # For block mode, we need to sort by x position
+            if mode == "block":
+                sorted_group = sorted(group, key=lambda c: c.bbox[0])
+
+            # Combine text with space separation
+            combined_text = " ".join(c.text.strip() for c in sorted_group if c.text)
+
+            # Use first span's properties
+            first = sorted_group[0]
+
+            if mode == "line":
+                new_id = f"p{first.page}_t_b{key[1]}_l{key[2]}"
+            else:  # block
+                new_id = f"p{first.page}_t_b{key[1]}"
+
+            result_components.append(DocumentComponent(
+                id=new_id,
+                type=ComponentType.TEXT,
+                page=first.page,
+                bbox=(min_x, min_y, max_x, max_y),
+                text=combined_text,
+                fontname=first.fontname,
+                fontsize=first.fontsize,
+                color=first.color,
+                flags=first.flags,
+                rotation=first.rotation,
+                origin=first.origin,
+                editable=first.editable,
+            ))
+
+    # Sort result by page, then by bbox (top-to-bottom, left-to-right)
+    result_components.sort(key=lambda c: (c.page, c.bbox[1], c.bbox[0]))
+
+    return result_components
 
 
 

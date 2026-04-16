@@ -16,11 +16,13 @@ from .models import Label
 from .utils import (
     AI_COMPAT_WARNING,
     clamp_rect_to_page,
+    contains_non_latin,
     detect_file_type,
     extract_embedded_fonts,
     hex_color_to_rgb_float,
     resolve_font,
     resolve_font_file,
+    resolve_unicode_font,
     strip_subset_prefix,
 )
 from .mappings import BARCODE_REGION_MAP, detect_mapping
@@ -84,6 +86,17 @@ def _insert_htmlbox(
     font_file = resolve_font_file(label.fontname, label.flags)
     color = hex_color_to_rgb_float(label.color)
 
+    # Check if fontname is already a file path (from Unicode fallback)
+    # File paths contain "/" or end with .ttf/.otf/.ttc
+    is_font_path = label.fontname and (
+        "/" in label.fontname or
+        label.fontname.endswith(".ttf") or
+        label.fontname.endswith(".otf") or
+        label.fontname.endswith(".ttc")
+    )
+    if is_font_path and not font_file:
+        font_file = label.fontname
+
     # Never use subset-embedded fonts for replacement text: PDF subset fonts use
     # custom internal encodings that only work correctly for the original glyphs.
     # New text must always use a full system font or built-in fallback.
@@ -96,7 +109,11 @@ def _insert_htmlbox(
             )
 
     if font_file:
-        font_kwargs = {"fontfile": font_file, "fontname": label.fontname}
+        # When using fontfile, we must provide a simple fontname (no slashes/spaces)
+        # Extract a simple name from the font file path
+        font_path = Path(font_file)
+        simple_name = font_path.stem.replace(" ", "").replace("-", "")[:32] or "unicode"
+        font_kwargs = {"fontfile": font_file, "fontname": simple_name}
         _tmp = fitz.Font(fontfile=font_file)
         def _text_width(fs: float) -> float:
             return _tmp.text_length(text, fontsize=fs)
@@ -201,6 +218,16 @@ def _insert_textbox_fallback(
     font_file = resolve_font_file(label.fontname, label.flags)
     color = hex_color_to_rgb_float(label.color)
 
+    # Check if fontname is already a file path (from Unicode fallback)
+    is_font_path = label.fontname and (
+        "/" in label.fontname or
+        label.fontname.endswith(".ttf") or
+        label.fontname.endswith(".otf") or
+        label.fontname.endswith(".ttc")
+    )
+    if is_font_path and not font_file:
+        font_file = label.fontname
+
     embedded_bytes: bytes | None = None
     if embedded_fonts:
         lookup = strip_subset_prefix(label.fontname).lower()
@@ -211,7 +238,9 @@ def _insert_textbox_fallback(
         _tmp_font = fitz.Font(fontbuffer=embedded_bytes)
         text_width = _tmp_font.text_length(text, fontsize=label.fontsize)
     elif font_file:
-        font_kwargs = {"fontfile": font_file, "fontname": label.fontname}
+        font_path = Path(font_file)
+        simple_name = font_path.stem.replace(" ", "").replace("-", "")[:32] or "unicode"
+        font_kwargs = {"fontfile": font_file, "fontname": simple_name}
         _tmp_font = fitz.Font(fontfile=font_file)
         text_width = _tmp_font.text_length(text, fontsize=label.fontsize)
     else:
@@ -481,13 +510,20 @@ def apply_from_components(
             logger.warning("Unknown component id in changes.json: %s — skipped", cid)
             continue
         if comp.type == ComponentType.TEXT:
+            # Use Unicode fallback font if replacement text contains non-Latin glyphs
+            fontname = comp.fontname or "helv"
+            if new_value and contains_non_latin(new_value):
+                unicode_font = resolve_unicode_font()
+                if unicode_font:
+                    fontname = unicode_font
+
             text_labels.append(Label(
                 id=comp.id,
                 page=comp.page,
                 bbox=comp.bbox,
                 original_text=comp.text or "",
                 new_text=new_value,
-                fontname=comp.fontname or "helv",
+                fontname=fontname,
                 fontsize=comp.fontsize or 10.0,
                 color=comp.color or "#000000",
                 flags=comp.flags or 0,
@@ -496,6 +532,25 @@ def apply_from_components(
             ))
         elif comp.type == ComponentType.BARCODE:
             barcode_jobs.append((comp, new_value))
+        elif comp.type == ComponentType.SHAPE and comp.ocr_text:
+            # Outlined text detected by OCR — treat as text replacement
+            from .ocr_handler import estimate_fontsize_from_bbox
+            from .mappings import get_cjk_fallback_font
+
+            cjk_font = get_cjk_fallback_font("") or "helv"
+            text_labels.append(Label(
+                id=comp.id,
+                page=comp.page,
+                bbox=comp.bbox,
+                original_text=comp.ocr_text,
+                new_text=new_value,
+                fontname=cjk_font,
+                fontsize=estimate_fontsize_from_bbox(comp.bbox),
+                color=comp.fill_color or "#000000",
+                flags=0,
+                rotation=comp.rotation or 0,
+                origin=None,
+            ))
         elif comp.type == ComponentType.SHAPE:
             shape_jobs.append((comp, new_value))
         else:

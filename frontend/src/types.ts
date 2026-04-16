@@ -31,6 +31,7 @@ export interface AnalyzeResponse {
   editable_ids: string[]
   warning: string | null
   mapping_name?: string | null
+  grouping_mode: 'span' | 'line' | 'block'
 }
 
 export type ComponentType = 'TEXT' | 'IMAGE' | 'BARCODE' | 'SHAPE'
@@ -59,6 +60,11 @@ export interface DocumentComponent {
   fill_opacity: number | null
   stroke_color: string | null
   stroke_width: number | null
+
+  // OCR fields (for SHAPE components with detected outlined text)
+  ocr_text: string | null
+  ocr_confidence: number | null
+  ocr_language: string | null
 }
 
 export interface ComponentsResponse {
@@ -87,6 +93,8 @@ export interface Toast {
 export interface TemplateSummary {
   name: string
   field_count: number
+  label_id?: string | null
+  grouping_mode: 'span' | 'line' | 'block'
 }
 
 export interface TemplatesListResponse {

@@ -10,7 +10,7 @@ from pathlib import Path
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
 
 from ..apply_utils import apply_changes_to_pdf
-from ..dependencies import get_session, run_analysis, rasterize_ai_preview
+from ..dependencies import get_session, run_analysis, rasterize_ai_preview, _text_components_to_label_dtos
 from ..label_mapping import (
     build_component_changes,
     get_template_fields,
@@ -136,7 +136,7 @@ def load_ai_file(
     session_id: str = Query(...),
 ):
     """Load the AI file associated with a template into the session and analyze it."""
-    from labelforge.mappings import get_ai_file
+    from labelforge.mappings import get_ai_file, get_grouping_mode
 
     # 1. Resolve AI file path
     ai_file_rel = get_ai_file(template_name)
@@ -172,12 +172,30 @@ def load_ai_file(
     session.input_path = pdf_path
     session.file_type = "ai"
 
-    # 5. Run analysis
-    label_dtos, page_count, mapping_name = run_analysis(session)
+    # 5. Run analysis - extracts span-level components and caches them
+    #    Enable OCR so outlined CJK text in shapes gets detected
+    label_dtos, page_count, mapping_name = run_analysis(session, enable_ocr=True)
+
+    # 6. Apply grouping based on template's GROUPING_MODE
+    grouping_mode = get_grouping_mode(template_name)
+    if grouping_mode != "span":
+        from labelforge.document_analyzer import group_text_components
+        from labelforge.component_models import ComponentType
+        from ..schemas import LabelDTO
+
+        # Get span-level components from session cache
+        span_components = session.extra.get("components", [])
+        if span_components:
+            # Group for display
+            grouped_components = group_text_components(span_components, grouping_mode)
+            # Derive LabelDTOs from grouped components
+            label_dtos = _text_components_to_label_dtos(grouped_components)
+            # Keep span-level in a separate key for apply pipeline
+            session.extra["components_span"] = span_components
 
     logger.info(
-        "Load-AI: template=%s session=%s labels=%d",
-        template_name, session_id, len(label_dtos),
+        "Load-AI: template=%s session=%s labels=%d grouping=%s",
+        template_name, session_id, len(label_dtos), grouping_mode,
     )
 
     return AnalyzeResponse(
@@ -188,6 +206,7 @@ def load_ai_file(
         editable_ids=[],
         warning=None,
         mapping_name=mapping_name,
+        grouping_mode=grouping_mode,
     )
 
 

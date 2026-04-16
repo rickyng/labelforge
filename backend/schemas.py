@@ -43,6 +43,7 @@ class AnalyzeResponse(BaseModel):
     warning: str | None = None
     changes_data: dict | None = None
     mapping_name: str | None = None
+    grouping_mode: str = "span"  # span, line, or block
 
 
 class ApplyRequest(BaseModel):
@@ -111,6 +112,11 @@ class ComponentDTO(BaseModel):
     stroke_color: str | None = None             # "#rrggbb" hex or None
     stroke_width: float | None = None           # line width in points
 
+    # OCR fields (for SHAPE components with detected outlined text)
+    ocr_text: str | None = None                 # OCR-detected text content
+    ocr_confidence: float | None = None         # OCR confidence score (0.0-1.0)
+    ocr_language: str | None = None             # Detected language ("zh", "ja", "ko")
+
 
 class ComponentsResponse(BaseModel):
     session_id: str
@@ -156,6 +162,8 @@ class ProfileApplyResponse(BaseModel):
 class TemplateSummary(BaseModel):
     name: str
     field_count: int
+    label_id: str | None = None
+    grouping_mode: str = "span"  # span, line, or block
 
 
 class TemplatesListResponse(BaseModel):
@@ -180,6 +188,9 @@ class ResolvedField(BaseModel):
     json_path: str
     field_type: str
     values: list[str | None]
+    translated_values: list[str | None] = []
+    translations_by_lang: dict[str, dict[str, str]] = {}
+
 
 
 class ResolvedFieldsResponse(BaseModel):

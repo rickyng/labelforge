@@ -3,6 +3,7 @@ import {
   analyzeComponents,
   applyDirect,
   downloadUrl,
+  fetchSampleOrder,
   listTemplates,
   loadAiFile,
   mapTemplateFields,
@@ -78,6 +79,7 @@ export default function Editor() {
   const [editedPagePoints, setEditedPagePoints] = useState<{ width: number; height: number } | null>(null)
   const [panelWidthPct, setPanelWidthPct] = useState(25) // default 25%
   const panelResizeRef = React.useRef<{ startX: number; startPct: number; containerWidth: number } | null>(null)
+  const [groupingMode, setGroupingMode] = useState<'span' | 'line' | 'block'>('span')
 
   // Load templates on mount
   useEffect(() => {
@@ -131,6 +133,7 @@ export default function Editor() {
         setPageCount(aiRes.page_count)
         setCurrentPage(0)
         setRenderKey(k => k + 1)
+        setGroupingMode(aiRes.grouping_mode || 'span')
         addToast(`Loaded template — ${aiRes.labels.length} label(s)`, 'success')
         fetchComponents(aiRes.session_id)
         fetchPreviewImages(aiRes.session_id)
@@ -376,8 +379,28 @@ export default function Editor() {
           />
           {/* Upload */}
           {!hasSession && (
-            <div className="flex-1 flex items-center justify-center p-4">
+            <div className="flex-1 flex flex-col items-center justify-center p-4 gap-4">
               <UploadZone onFile={handleFile} loading={uploading} />
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-gray-400">or</span>
+                <button
+                  onClick={async () => {
+                    setUploading(true)
+                    try {
+                      const { file } = await fetchSampleOrder()
+                      await handleFile(file)
+                    } catch (err) {
+                      addToast(err instanceof Error ? err.message : 'Failed to load sample order', 'error')
+                    } finally {
+                      setUploading(false)
+                    }
+                  }}
+                  disabled={uploading}
+                  className="btn-secondary text-sm py-2 px-4 disabled:opacity-50"
+                >
+                  Load Sample Order
+                </button>
+              </div>
             </div>
           )}
 
@@ -395,10 +418,13 @@ export default function Editor() {
                 >
                   <option value="">-- Select template --</option>
                   {templates.map(t => (
-                    <option key={t.name} value={t.name}>{t.name} ({t.field_count} fields)</option>
+                    <option key={t.name} value={t.name}>{t.label_id ? `${t.label_id} — ` : ''}{t.name} ({t.field_count} fields)</option>
                   ))}
                 </select>
                 {analyzing && <p className="text-xs text-gray-400 mt-1">Loading…</p>}
+                {selectedTemplate && groupingMode !== 'span' && (
+                  <p className="text-xs text-gray-400 mt-1">Grouping: {groupingMode}</p>
+                )}
               </div>
 
               {/* Size navigation */}

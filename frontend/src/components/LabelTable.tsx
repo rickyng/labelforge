@@ -115,6 +115,8 @@ export function LabelTable({ changesForSize = {}, components = [] }: LabelTableP
               {typeFilter === 'TEXT' && <th className="py-1 px-1">Color</th>}
               {typeFilter === 'SHAPE' && <th className="py-1 px-1">Fill Color</th>}
               {typeFilter === 'SHAPE' && <th className="py-1 px-1">Opacity</th>}
+              {typeFilter === 'SHAPE' && <th className="py-1 px-1">OCR Text</th>}
+              {typeFilter === 'SHAPE' && <th className="py-1 px-1">OCR Conf</th>}
               {typeFilter === 'IMAGE' && <th className="py-1 px-1">Format</th>}
               {typeFilter === 'IMAGE' && <th className="py-1 px-1">Dimensions</th>}
               {typeFilter === 'BARCODE' && <th className="py-1 px-1">Value</th>}
@@ -213,6 +215,19 @@ export function LabelTable({ changesForSize = {}, components = [] }: LabelTableP
                       </td>
                       <td className="py-1 px-1 text-gray-500">
                         {row.data.fill_opacity != null ? row.data.fill_opacity.toFixed(2) : '—'}
+                      </td>
+                      <td className="py-1 px-1 max-w-[140px] truncate text-gray-700" title={row.data.ocr_text ?? undefined}>
+                        {row.data.ocr_text
+                          ? <span className="text-blue-700">{row.data.ocr_text}</span>
+                          : <span className="text-gray-300">—</span>
+                        }
+                      </td>
+                      <td className="py-1 px-1">
+                        {row.data.ocr_confidence != null ? (
+                          <span className={row.data.ocr_confidence > 0.8 ? 'text-green-600' : 'text-yellow-600'}>
+                            {(row.data.ocr_confidence * 100).toFixed(0)}%
+                          </span>
+                        ) : <span className="text-gray-300">—</span>}
                       </td>
                     </>
                   )}
