@@ -239,6 +239,105 @@ def _rgb_float_to_hex(rgb: tuple[float, float, float] | None) -> str | None:
     return f"#{int(r * 255):02x}{int(g * 255):02x}{int(b * 255):02x}"
 
 
+def _calculate_block_bboxes(
+    components: list[DocumentComponent],
+) -> dict[int, tuple[float, float, float, float]]:
+    """Calculate bounding box for each PyMuPDF block (union of all spans in block).
+
+    Returns a dict mapping block index -> union bounding box tuple (x0, y0, x1, y1).
+    """
+    block_bboxes: dict[int, tuple[float, float, float, float]] = {}
+
+    for comp in components:
+        if comp.type != ComponentType.TEXT:
+            continue
+
+        # Parse component ID: p{page}_t_b{block}_l{line}_s{span}
+        parts = comp.id.split("_")
+        if len(parts) < 5 or not parts[0].startswith("p"):
+            continue
+
+        try:
+            block_idx = int(parts[2][1:])  # b3 -> 3
+        except (IndexError, ValueError):
+            continue
+
+        if block_idx not in block_bboxes:
+            block_bboxes[block_idx] = comp.bbox
+        else:
+            # Union with existing bbox
+            existing = block_bboxes[block_idx]
+            block_bboxes[block_idx] = (
+                min(existing[0], comp.bbox[0]),
+                min(existing[1], comp.bbox[1]),
+                max(existing[2], comp.bbox[2]),
+                max(existing[3], comp.bbox[3]),
+            )
+
+    return block_bboxes
+
+
+def _merge_adjacent_blocks(
+    components: list[DocumentComponent],
+    threshold: float = 3.0,
+) -> dict[int, int]:
+    """Find blocks to merge based on spatial proximity.
+
+    Uses union-find (disjoint set) to handle transitive merging chains.
+    Returns a dict mapping original block index -> merged block index.
+
+    Blocks are merged if they are within `threshold` distance and either:
+    - Vertically adjacent with horizontal overlap (same column, close lines)
+    - Horizontally adjacent with vertical overlap (same row, close columns)
+    """
+    # Union-find implementation
+    parent: dict[int, int] = {}
+
+    def find(x: int) -> int:
+        if x not in parent:
+            parent[x] = x
+        if parent[x] != x:
+            parent[x] = find(parent[x])
+        return parent[x]
+
+    def union(x: int, y: int) -> None:
+        px, py = find(x), find(y)
+        if px != py:
+            parent[px] = py
+
+    # Calculate block bboxes
+    block_bboxes = _calculate_block_bboxes(components)
+    if not block_bboxes:
+        return {}
+
+    # Sort block indices by vertical position (top y-coordinate)
+    sorted_blocks = sorted(block_bboxes.keys(), key=lambda b: block_bboxes[b][1])
+
+    # Check adjacent pairs for proximity
+    for i in range(len(sorted_blocks) - 1):
+        b1, b2 = sorted_blocks[i], sorted_blocks[i + 1]
+        bbox1, bbox2 = block_bboxes[b1], block_bboxes[b2]
+
+        # Check vertical gap (b2 is below b1)
+        vertical_gap = bbox2[1] - bbox1[3]  # top of b2 - bottom of b1
+        # Check horizontal overlap
+        horizontal_overlap = not (bbox1[2] < bbox2[0] or bbox2[2] < bbox1[0])
+
+        if 0 <= vertical_gap <= threshold and horizontal_overlap:
+            union(b1, b2)
+            continue
+
+        # Check horizontal gap (blocks side by side)
+        horizontal_gap = min(abs(bbox1[2] - bbox2[0]), abs(bbox2[2] - bbox1[0]))
+        vertical_overlap = not (bbox1[3] < bbox2[1] or bbox2[3] < bbox1[1])
+
+        if 0 <= horizontal_gap <= threshold and vertical_overlap:
+            union(b1, b2)
+
+    # Build mapping: original block -> canonical merged block
+    return {b: find(b) for b in block_bboxes.keys()}
+
+
 def _serialize_drawing_item(item) -> dict | None:
     """Convert a PyMuPDF drawing item tuple to a JSON-serializable dict."""
     op = item[0]
@@ -430,6 +529,7 @@ from typing import Literal
 def group_text_components(
     components: list[DocumentComponent],
     mode: Literal["span", "line", "block"] = "span",
+    proximity_threshold: float = 0.0,
 ) -> list[DocumentComponent]:
     """Group TEXT components by the specified granularity.
 
@@ -439,6 +539,9 @@ def group_text_components(
             - "span": no grouping, return as-is
             - "line": group by (page, block, line) → p{page}_t_b{block}_l{line}
             - "block": group by (page, block) → p{page}_t_b{block}
+        proximity_threshold: If > 0, merge spatially adjacent blocks within this
+            distance (in PDF points) before structural grouping. Helps combine
+            text that PyMuPDF split into multiple blocks.
 
     Returns:
         New list with TEXT components grouped, non-TEXT unchanged.
@@ -446,7 +549,26 @@ def group_text_components(
     if mode == "span":
         return components
 
-    # Separate TEXT from non-TEXT components
+    # Step 1: Apply proximity merging if threshold > 0
+    if proximity_threshold > 0 and mode in ("line", "block"):
+        block_merge_map = _merge_adjacent_blocks(components, proximity_threshold)
+        # Update component IDs with merged block index
+        for comp in components:
+            if comp.type != ComponentType.TEXT:
+                continue
+            parts = comp.id.split("_")
+            if len(parts) >= 5 and parts[2].startswith("b"):
+                try:
+                    orig_block = int(parts[2][1:])
+                    merged_block = block_merge_map.get(orig_block, orig_block)
+                    parts[2] = f"b{merged_block}"
+                    # Create new component with updated ID
+                    # Note: We mutate the ID directly since components may be reused
+                    comp.id = "_".join(parts)
+                except (IndexError, ValueError):
+                    continue
+
+    # Step 2: Separate TEXT from non-TEXT components
     text_comps = [c for c in components if c.type == ComponentType.TEXT]
     non_text_comps = [c for c in components if c.type != ComponentType.TEXT]
 

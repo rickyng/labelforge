@@ -22,6 +22,7 @@ _TEMPLATE_MAPPINGS: dict[str, Callable] = {}
 AI_FILE_MAP: dict[str, str] = {}
 BARCODE_REGION_MAP: dict[str, dict[str, dict]] = {}
 _GROUPING_MODES: dict[str, str] = {}  # template_name -> "span" | "line" | "block"
+_PROXIMITY_THRESHOLDS: dict[str, float] = {}  # template_name -> threshold in PDF points (0 = disabled)
 OCR_ZONES: dict[str, dict[str, tuple[float, float, float, float]]] = {}  # mapping_name -> {zone_name: bbox}
 CJK_FALLBACK_FONTS: dict[str, str] = {}  # template_name -> font name
 
@@ -58,6 +59,11 @@ def _register(mod: ModuleType) -> None:
     key = template_name or name
     if key and grouping_mode:
         _GROUPING_MODES[key] = grouping_mode
+
+    # Proximity threshold for merging adjacent blocks
+    proximity_threshold: float | None = getattr(mod, "PROXIMITY_THRESHOLD", None)
+    if key and proximity_threshold and proximity_threshold > 0:
+        _PROXIMITY_THRESHOLDS[key] = proximity_threshold
 
     # OCR zones for outlined text detection (CJK etc.)
     ocr_zones: dict | None = getattr(mod, "OCR_ZONES", None)
@@ -96,6 +102,14 @@ def get_grouping_mode(template_name: str) -> str:
     Returns "span", "line", or "block". Defaults to "span" if not defined.
     """
     return _GROUPING_MODES.get(template_name, "span")
+
+
+def get_proximity_threshold(template_name: str) -> float:
+    """Return the proximity threshold for a template (in PDF points).
+
+    Returns 0.0 if not defined (meaning proximity merging is disabled).
+    """
+    return _PROXIMITY_THRESHOLDS.get(template_name, 0.0)
 
 
 def get_ocr_zones(mapping_name: str) -> dict[str, tuple[float, float, float, float]] | None:

@@ -5,6 +5,7 @@ MAPPING_NAME: str = "mango_gi000dpo"
 TEMPLATE_NAME: str = "GI000DPO-SAP_1"
 AI_FILE: str = "labelforge/templates/GI000DPO-SAP_1_ai.ai"
 GROUPING_MODE: str = "block"  # Group text spans by PDF block for display
+PROXIMITY_THRESHOLD: float = 3.0  # Merge blocks within 3 PDF points (vertical gap)
 
 # CJK fallback font used when inserting OCR-detected text during apply
 CJK_FALLBACK_FONT: str = "Noto Sans CJK SC"
